@@ -1,0 +1,20 @@
+# Maven build output
+target/
+
+# IDE files
+.idea/
+*.iml
+.classpath
+.project
+.settings/
+.vscode/
+
+# Mule build dependencies
+.mule/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Secrets - never commit real credentials
+# config.properties with real values should be managed via secrets

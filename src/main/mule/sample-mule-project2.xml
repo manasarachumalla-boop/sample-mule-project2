@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+
+    <flow name="hello-world-flow"
+          doc:name="Hello World Flow"
+          doc:description="Exposes a GET /api/hello endpoint that returns a static JSON hello world message">
+
+        <http:listener
+            config-ref="HTTP_Listener_Config"
+            path="/api/hello"
+            allowedMethods="GET"
+            doc:name="GET /api/hello"
+            doc:description="Receives HTTP GET requests on the /api/hello endpoint">
+            <http:response statusCode="200">
+                <http:headers><![CDATA[#[{'Content-Type': 'application/json'}]]]></http:headers>
+            </http:response>
+        </http:listener>
+
+        <ee:transform
+            doc:name="Build Hello World Response"
+            doc:description="Transforms the payload into a JSON object with a hello world message">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    message: "hello world"
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+
+        <logger
+            level="INFO"
+            message="#['Response: ' ++ write(payload, 'application/json')]"
+            doc:name="Log Response"
+            doc:description="Logs the outgoing hello world JSON response"/>
+
+    </flow>
+
+</mule>
