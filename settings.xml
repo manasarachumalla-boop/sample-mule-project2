@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ============================================================================
+  Maven settings.xml — MuleSoft Anypoint Platform Authentication
+  ============================================================================
+  PURPOSE
+    Provides server credentials that Maven uses when:
+      • Downloading Mule dependencies from MuleSoft repositories
+      • Publishing the application asset to Anypoint Exchange (mvn deploy)
+      • Deploying to CloudHub 2.0 via the Mule Maven Plugin (mvn deploy -DmuleDeploy)
+
+  CONNECTED APP AUTHENTICATION FORMAT (Mule Maven Plugin 4.x)
+    username  : ~~~Client~~~          (literal sentinel value — do NOT change)
+    password  : <clientId>~?~<clientSecret>
+
+  USAGE
+    Local development:
+      Replace ANYPOINT_CLIENT_ID and ANYPOINT_CLIENT_SECRET with your
+      Connected App credentials, then run:
+        mvn deploy -DmuleDeploy -s settings.xml -DbusinessGroupId=<orgId> ...
+
+    CI/CD (GitHub Actions):
+      The pipeline dynamically writes this file at runtime using GitHub Secrets.
+      Never commit real credentials to this file.
+
+  HOW TO CREATE A CONNECTED APP IN ANYPOINT PLATFORM
+    Access Management → Connected Apps → Create app
+    Scopes required:
+      - Design Center Developer
+      - Exchange Contributor
+      - Exchange Viewer
+      - Manage APIs Configuration
+      - Runtime Manager → Deploy Mule Applications
+      - CloudHub Network Administrator (if using Private Space)
+  ============================================================================
+-->
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0
+                              http://maven.apache.org/xsd/settings-1.0.0.xsd">
+
+  <!-- ───────────────────────────────────────────────────────────────────── -->
+  <!-- Server credentials                                                    -->
+  <!-- ───────────────────────────────────────────────────────────────────── -->
+  <servers>
+
+    <!--
+      Anypoint Exchange v3 Maven repository
+      Used by:  mvn deploy  (publish to Exchange)
+                distributionManagement in pom.xml
+    -->
+    <server>
+      <id>anypoint-exchange-v3</id>
+      <username>~~~Client~~~</username>
+      <!-- Replace tokens below with real values — NEVER commit credentials -->
+      <password>ANYPOINT_CLIENT_ID~?~ANYPOINT_CLIENT_SECRET</password>
+    </server>
+
+    <!--
+      MuleSoft public release repository
+      Used by:  dependency resolution for Mule connectors and runtime
+    -->
+    <server>
+      <id>mulesoft-releases</id>
+      <username>~~~Client~~~</username>
+      <password>ANYPOINT_CLIENT_ID~?~ANYPOINT_CLIENT_SECRET</password>
+    </server>
+
+    <!--
+      MuleSoft Enterprise repository (EE connectors, DataWeave libs, etc.)
+      Uncomment if your project uses enterprise / licensed connectors
+    -->
+    <!--
+    <server>
+      <id>mulesoft-enterprise-repository</id>
+      <username>YOUR_ANYPOINT_USERNAME</username>
+      <password>YOUR_ANYPOINT_PASSWORD</password>
+    </server>
+    -->
+
+  </servers>
+
+  <!-- ───────────────────────────────────────────────────────────────────── -->
+  <!-- Active profiles                                                       -->
+  <!-- ───────────────────────────────────────────────────────────────────── -->
+  <!--
+    Activate a deployment profile from the command line:
+      -P deploy-dev     →  deploy to DEV  environment in CloudHub 2.0
+      -P deploy-test    →  deploy to TEST environment in CloudHub 2.0
+      -P deploy-prod    →  deploy to PROD environment in CloudHub 2.0
+
+    Example:
+      mvn deploy -DmuleDeploy -P deploy-dev -s settings.xml \
+        -DconnectedAppClientId=<id> \
+        -DconnectedAppClientSecret=<secret> \
+        -DbusinessGroupId=<orgId>
+  -->
+
+</settings>

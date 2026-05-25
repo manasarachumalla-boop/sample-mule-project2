@@ -1,0 +1,483 @@
+# =============================================================================
+# GitHub Actions CI/CD — MuleSoft CloudHub 2.0
+# Project  : sample-mule-project2 (com.mycompany / 1.0.0-SNAPSHOT)
+# Trigger  : push → feature/sample-mule-project2  |  workflow_dispatch
+# Pipeline : Build → MUnit (≥80%) → Exchange → DEV → TEST* → PROD*
+#            (* = manual approval gate via GitHub Environment protection rule)
+#
+# GitHub Secrets required:
+#   ANYPOINT_CLIENT_ID      ANYPOINT_CLIENT_SECRET
+#   ANYPOINT_ORG_ID
+#   ANYPOINT_ENV_DEV        ANYPOINT_ENV_TEST       ANYPOINT_ENV_PROD
+#   SLACK_WEBHOOK_URL       (optional – Slack notifications)
+# =============================================================================
+
+name: MuleSoft CI/CD — CloudHub 2.0
+
+on:
+  push:
+    branches:
+      - "feature/sample-mule-project2"
+  workflow_dispatch:
+    inputs:
+      skip_to_env:
+        description: "Skip straight to environment (dev|test|prod). Leave blank for full pipeline."
+        required: false
+        default: ""
+
+concurrency:
+  group: "${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: true
+
+# ---------------------------------------------------------------------------
+# Pipeline-wide constants
+# ---------------------------------------------------------------------------
+env:
+  JAVA_VERSION: "17"
+  JAVA_DISTRIBUTION: "temurin"
+  APP_NAME: "sample-mule-project2"
+  MULE_RUNTIME: "4.11.2"
+  CH2_PROVIDER: "MC"
+  CH2_TARGET: "Cloudhub-US-East-2"
+
+# =============================================================================
+# REUSABLE step helpers — written inline to avoid external action dependencies
+# =============================================================================
+jobs:
+
+  # ---------------------------------------------------------------------------
+  # 1 — BUILD & MUNIT TESTS
+  # ---------------------------------------------------------------------------
+  build-and-test:
+    name: "1 · Build & MUnit Tests"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          cache: maven
+
+      - name: Write Maven settings.xml
+        env:
+          CLIENT_ID: ${{ secrets.ANYPOINT_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.ANYPOINT_CLIENT_SECRET }}
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml <<XMLEOF
+          <settings>
+            <servers>
+              <server>
+                <id>anypoint-exchange-v3</id>
+                <username>~~~Client~~~</username>
+                <password>${CLIENT_ID}~?~${CLIENT_SECRET}</password>
+              </server>
+              <server>
+                <id>mulesoft-releases</id>
+                <username>~~~Client~~~</username>
+                <password>${CLIENT_ID}~?~${CLIENT_SECRET}</password>
+              </server>
+            </servers>
+          </settings>
+          XMLEOF
+
+      - name: Restore Maven cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-m2-
+
+      - name: Maven clean compile
+        run: |
+          mvn clean compile --batch-mode --no-transfer-progress \
+            -DconnectedAppClientId="${{ secrets.ANYPOINT_CLIENT_ID }}" \
+            -DconnectedAppClientSecret="${{ secrets.ANYPOINT_CLIENT_SECRET }}"
+
+      - name: Run MUnit tests (coverage gate 80%)
+        run: |
+          mvn test --batch-mode --no-transfer-progress \
+            -Dmunit.coverage.fail.build=true \
+            -Dmunit.coverage.runCoverage=true \
+            -Dmunit.coverage.threshold=80 \
+            -DconnectedAppClientId="${{ secrets.ANYPOINT_CLIENT_ID }}" \
+            -DconnectedAppClientSecret="${{ secrets.ANYPOINT_CLIENT_SECRET }}"
+
+      - name: Upload MUnit coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: munit-coverage-report
+          path: target/site/munit/coverage-report/
+          retention-days: 14
+
+      - name: Upload application JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: mule-application-jar
+          path: target/*.jar
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Notify Slack on build failure
+        if: failure()
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {"text":":x: *MuleSoft Build FAILED* — ${{ github.repository }} @ `${{ github.ref_name }}`\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Run>"}
+
+  # ---------------------------------------------------------------------------
+  # 2 — PUBLISH TO ANYPOINT EXCHANGE
+  # ---------------------------------------------------------------------------
+  publish-to-exchange:
+    name: "2 · Publish to Anypoint Exchange"
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          cache: maven
+
+      - name: Write Maven settings.xml
+        env:
+          CLIENT_ID: ${{ secrets.ANYPOINT_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.ANYPOINT_CLIENT_SECRET }}
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml <<XMLEOF
+          <settings>
+            <servers>
+              <server>
+                <id>anypoint-exchange-v3</id>
+                <username>~~~Client~~~</username>
+                <password>${CLIENT_ID}~?~${CLIENT_SECRET}</password>
+              </server>
+            </servers>
+          </settings>
+          XMLEOF
+
+      - name: Restore Maven cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-m2-
+
+      - name: Deploy to Anypoint Exchange
+        run: |
+          mvn deploy --batch-mode --no-transfer-progress \
+            -DskipTests \
+            -DconnectedAppClientId="${{ secrets.ANYPOINT_CLIENT_ID }}" \
+            -DconnectedAppClientSecret="${{ secrets.ANYPOINT_CLIENT_SECRET }}" \
+            -DbusinessGroupId="${{ secrets.ANYPOINT_ORG_ID }}"
+
+  # ---------------------------------------------------------------------------
+  # 3 — DEPLOY TO DEV  (automatic after Exchange publish)
+  # ---------------------------------------------------------------------------
+  deploy-dev:
+    name: "3 · Deploy → DEV"
+    needs: publish-to-exchange
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: dev
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          cache: maven
+
+      - name: Write Maven settings.xml
+        env:
+          CLIENT_ID: ${{ secrets.ANYPOINT_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.ANYPOINT_CLIENT_SECRET }}
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml <<XMLEOF
+          <settings>
+            <servers>
+              <server>
+                <id>anypoint-exchange-v3</id>
+                <username>~~~Client~~~</username>
+                <password>${CLIENT_ID}~?~${CLIENT_SECRET}</password>
+              </server>
+            </servers>
+          </settings>
+          XMLEOF
+
+      - name: Restore Maven cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-m2-
+
+      - name: Deploy to CloudHub 2.0 — DEV
+        run: |
+          mvn deploy --batch-mode --no-transfer-progress \
+            -DskipTests -DmuleDeploy \
+            -DconnectedAppClientId="${{ secrets.ANYPOINT_CLIENT_ID }}" \
+            -DconnectedAppClientSecret="${{ secrets.ANYPOINT_CLIENT_SECRET }}" \
+            -DbusinessGroupId="${{ secrets.ANYPOINT_ORG_ID }}" \
+            -Denvironment="${{ secrets.ANYPOINT_ENV_DEV }}" \
+            -Dtarget="${{ env.CH2_TARGET }}" \
+            -DapplicationName="${{ env.APP_NAME }}-dev" \
+            -Dreplicas=1 \
+            -DvCores=0.1 \
+            -DmuleVersion="${{ env.MULE_RUNTIME }}" \
+            -Dprovider="${{ env.CH2_PROVIDER }}"
+
+      - name: Rollback DEV on deployment failure
+        if: failure()
+        run: |
+          echo "::warning::DEV deployment failed. Attempting rollback to previous version."
+          # Derive previous patch version  e.g.  1.0.2-SNAPSHOT  →  1.0.1
+          CURRENT=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+          BASE=${CURRENT%-SNAPSHOT}
+          PATCH=${BASE##*.}
+          PREFIX=${BASE%.*}
+          PREV_PATCH=$((PATCH - 1))
+          PREV_VERSION="${PREFIX}.${PREV_PATCH}"
+          echo "Rolling back to Exchange version: ${PREV_VERSION}"
+          mvn mule:deploy --batch-mode -DmuleDeploy \
+            -Dproject.version="${PREV_VERSION}" \
+            -DconnectedAppClientId="${{ secrets.ANYPOINT_CLIENT_ID }}" \
+            -DconnectedAppClientSecret="${{ secrets.ANYPOINT_CLIENT_SECRET }}" \
+            -DbusinessGroupId="${{ secrets.ANYPOINT_ORG_ID }}" \
+            -Denvironment="${{ secrets.ANYPOINT_ENV_DEV }}" \
+            -Dtarget="${{ env.CH2_TARGET }}" \
+            -DapplicationName="${{ env.APP_NAME }}-dev" \
+            -Dreplicas=1 -DvCores=0.1
+
+      - name: Notify Slack — DEV success
+        if: success()
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {"text":":white_check_mark: *DEV Deployed* — `${{ env.APP_NAME }}-dev` | branch `${{ github.ref_name }}`"}
+
+      - name: Notify Slack — DEV failure
+        if: failure()
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {"text":":x: *DEV Deployment FAILED* — rollback initiated | <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Run>"}
+
+  # ---------------------------------------------------------------------------
+  # 4 — DEPLOY TO TEST  (requires manual approval — GitHub Environment "test")
+  # ---------------------------------------------------------------------------
+  deploy-test:
+    name: "4 · Deploy → TEST"
+    needs: deploy-dev
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          cache: maven
+
+      - name: Write Maven settings.xml
+        env:
+          CLIENT_ID: ${{ secrets.ANYPOINT_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.ANYPOINT_CLIENT_SECRET }}
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml <<XMLEOF
+          <settings>
+            <servers>
+              <server>
+                <id>anypoint-exchange-v3</id>
+                <username>~~~Client~~~</username>
+                <password>${CLIENT_ID}~?~${CLIENT_SECRET}</password>
+              </server>
+            </servers>
+          </settings>
+          XMLEOF
+
+      - name: Restore Maven cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-m2-
+
+      - name: Deploy to CloudHub 2.0 — TEST
+        run: |
+          mvn deploy --batch-mode --no-transfer-progress \
+            -DskipTests -DmuleDeploy \
+            -DconnectedAppClientId="${{ secrets.ANYPOINT_CLIENT_ID }}" \
+            -DconnectedAppClientSecret="${{ secrets.ANYPOINT_CLIENT_SECRET }}" \
+            -DbusinessGroupId="${{ secrets.ANYPOINT_ORG_ID }}" \
+            -Denvironment="${{ secrets.ANYPOINT_ENV_TEST }}" \
+            -Dtarget="${{ env.CH2_TARGET }}" \
+            -DapplicationName="${{ env.APP_NAME }}-test" \
+            -Dreplicas=1 \
+            -DvCores=0.2 \
+            -DmuleVersion="${{ env.MULE_RUNTIME }}" \
+            -Dprovider="${{ env.CH2_PROVIDER }}"
+
+      - name: Rollback TEST on deployment failure
+        if: failure()
+        run: |
+          echo "::warning::TEST deployment failed. Attempting rollback."
+          CURRENT=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+          BASE=${CURRENT%-SNAPSHOT}
+          PATCH=${BASE##*.}
+          PREFIX=${BASE%.*}
+          PREV_VERSION="${PREFIX}.$((PATCH - 1))"
+          echo "Rolling back to: ${PREV_VERSION}"
+          mvn mule:deploy --batch-mode -DmuleDeploy \
+            -Dproject.version="${PREV_VERSION}" \
+            -DconnectedAppClientId="${{ secrets.ANYPOINT_CLIENT_ID }}" \
+            -DconnectedAppClientSecret="${{ secrets.ANYPOINT_CLIENT_SECRET }}" \
+            -DbusinessGroupId="${{ secrets.ANYPOINT_ORG_ID }}" \
+            -Denvironment="${{ secrets.ANYPOINT_ENV_TEST }}" \
+            -Dtarget="${{ env.CH2_TARGET }}" \
+            -DapplicationName="${{ env.APP_NAME }}-test" \
+            -Dreplicas=1 -DvCores=0.2
+
+      - name: Notify Slack — TEST result
+        if: always()
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {"text":"${{ job.status == 'success' && ':white_check_mark:' || ':x:' }} *TEST Deployment ${{ job.status }}* — `${{ env.APP_NAME }}-test`"}
+
+  # ---------------------------------------------------------------------------
+  # 5 — DEPLOY TO PROD  (requires manual approval — GitHub Environment "prod")
+  # ---------------------------------------------------------------------------
+  deploy-prod:
+    name: "5 · Deploy → PROD"
+    needs: deploy-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: prod
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          cache: maven
+
+      - name: Write Maven settings.xml
+        env:
+          CLIENT_ID: ${{ secrets.ANYPOINT_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.ANYPOINT_CLIENT_SECRET }}
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml <<XMLEOF
+          <settings>
+            <servers>
+              <server>
+                <id>anypoint-exchange-v3</id>
+                <username>~~~Client~~~</username>
+                <password>${CLIENT_ID}~?~${CLIENT_SECRET}</password>
+              </server>
+            </servers>
+          </settings>
+          XMLEOF
+
+      - name: Restore Maven cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-m2-
+
+      - name: Deploy to CloudHub 2.0 — PROD
+        run: |
+          mvn deploy --batch-mode --no-transfer-progress \
+            -DskipTests -DmuleDeploy \
+            -DconnectedAppClientId="${{ secrets.ANYPOINT_CLIENT_ID }}" \
+            -DconnectedAppClientSecret="${{ secrets.ANYPOINT_CLIENT_SECRET }}" \
+            -DbusinessGroupId="${{ secrets.ANYPOINT_ORG_ID }}" \
+            -Denvironment="${{ secrets.ANYPOINT_ENV_PROD }}" \
+            -Dtarget="${{ env.CH2_TARGET }}" \
+            -DapplicationName="${{ env.APP_NAME }}" \
+            -Dreplicas=2 \
+            -DvCores=0.5 \
+            -DmuleVersion="${{ env.MULE_RUNTIME }}" \
+            -Dprovider="${{ env.CH2_PROVIDER }}"
+
+      - name: Rollback PROD on deployment failure
+        if: failure()
+        run: |
+          echo "::error::PROD deployment failed — initiating rollback. IMMEDIATE ATTENTION REQUIRED."
+          CURRENT=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+          BASE=${CURRENT%-SNAPSHOT}
+          PATCH=${BASE##*.}
+          PREFIX=${BASE%.*}
+          PREV_VERSION="${PREFIX}.$((PATCH - 1))"
+          echo "Rolling back PROD to: ${PREV_VERSION}"
+          mvn mule:deploy --batch-mode -DmuleDeploy \
+            -Dproject.version="${PREV_VERSION}" \
+            -DconnectedAppClientId="${{ secrets.ANYPOINT_CLIENT_ID }}" \
+            -DconnectedAppClientSecret="${{ secrets.ANYPOINT_CLIENT_SECRET }}" \
+            -DbusinessGroupId="${{ secrets.ANYPOINT_ORG_ID }}" \
+            -Denvironment="${{ secrets.ANYPOINT_ENV_PROD }}" \
+            -Dtarget="${{ env.CH2_TARGET }}" \
+            -DapplicationName="${{ env.APP_NAME }}" \
+            -Dreplicas=2 -DvCores=0.5
+
+      - name: Notify Slack — PROD deployed
+        if: success()
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {"text":":rocket: *PRODUCTION Deployed* :rocket: — `${{ env.APP_NAME }}` | branch `${{ github.ref_name }}` | commit `${{ github.sha }}`"}
+
+      - name: Notify Slack — PROD failure (P1 alert)
+        if: failure()
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {"text":":rotating_light: *P1 — PRODUCTION Deployment FAILED* :rotating_light:\nRollback initiated for `${{ env.APP_NAME }}`.\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Investigate immediately>"}
