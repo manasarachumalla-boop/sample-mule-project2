@@ -1,64 +1,65 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  ============================================================================
-  Maven settings.xml — MuleSoft Anypoint Platform Authentication
-  ============================================================================
-  PURPOSE
-    Provides server credentials that Maven uses when:
-      • Downloading Mule dependencies from MuleSoft repositories
-      • Publishing the application asset to Anypoint Exchange (mvn deploy)
-      • Deploying to CloudHub 2.0 via the Mule Maven Plugin (mvn deploy -DmuleDeploy)
+  settings.xml — MuleSoft Anypoint Platform Maven Authentication
+  ================================================================
+  PURPOSE : Authenticates Maven against Anypoint Exchange and MuleSoft
+            repositories for dependency resolution, Exchange publishing,
+            and CloudHub 2.0 deployment.
 
-  CONNECTED APP AUTHENTICATION FORMAT (Mule Maven Plugin 4.x)
-    username  : ~~~Client~~~          (literal sentinel value — do NOT change)
-    password  : <clientId>~?~<clientSecret>
+  CONNECTED APP FORMAT (Mule Maven Plugin 4.x)
+    username: ~~~Client~~~
+    password: <clientId>~?~<clientSecret>
 
-  USAGE
-    Local development:
-      Replace ANYPOINT_CLIENT_ID and ANYPOINT_CLIENT_SECRET with your
-      Connected App credentials, then run:
-        mvn deploy -DmuleDeploy -s settings.xml -DbusinessGroupId=<orgId> ...
+  CREATING A CONNECTED APP
+    Anypoint Platform > Access Management > Connected Apps > Create
+    Required scopes:
+      Design Center Developer
+      Exchange Contributor / Viewer
+      Manage APIs Configuration
+      Runtime Manager: Deploy Mule Applications
+      CloudHub Network Administrator (Private Space only)
 
-    CI/CD (GitHub Actions):
-      The pipeline dynamically writes this file at runtime using GitHub Secrets.
-      Never commit real credentials to this file.
+  LOCAL USE
+    Replace ANYPOINT_CLIENT_ID and ANYPOINT_CLIENT_SECRET with real values,
+    then run:
+      mvn deploy -DmuleDeploy -s settings.xml -P deploy-dev
+        -DbusinessGroupId=<orgId>
+        -DconnectedAppClientId=<clientId>
+        -DconnectedAppClientSecret=<clientSecret>
+        -Dcloudhub2.environment=Sandbox
+        -Dcloudhub2.target=Cloudhub-US-East-2
 
-  HOW TO CREATE A CONNECTED APP IN ANYPOINT PLATFORM
-    Access Management → Connected Apps → Create app
-    Scopes required:
-      - Design Center Developer
-      - Exchange Contributor
-      - Exchange Viewer
-      - Manage APIs Configuration
-      - Runtime Manager → Deploy Mule Applications
-      - CloudHub Network Administrator (if using Private Space)
-  ============================================================================
+  CI/CD (GitHub Actions)
+    The pipeline generates ~/.m2/settings.xml at runtime from GitHub Secrets.
+    This file is a TEMPLATE ONLY — never commit real credentials.
+
+  SECURITY
+    Rotate Connected App secrets every 90 days.
+    Use minimum required scopes (principle of least privilege).
 -->
 <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
           xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0
                               http://maven.apache.org/xsd/settings-1.0.0.xsd">
 
-  <!-- ───────────────────────────────────────────────────────────────────── -->
-  <!-- Server credentials                                                    -->
-  <!-- ───────────────────────────────────────────────────────────────────── -->
   <servers>
 
     <!--
-      Anypoint Exchange v3 Maven repository
-      Used by:  mvn deploy  (publish to Exchange)
-                distributionManagement in pom.xml
+      Anypoint Exchange v3 — artifact publishing and dependency resolution.
+      Maps to: pom.xml > distributionManagement > anypoint-exchange-v3
+               pom.xml > repositories > anypoint-exchange-v3
     -->
     <server>
       <id>anypoint-exchange-v3</id>
       <username>~~~Client~~~</username>
-      <!-- Replace tokens below with real values — NEVER commit credentials -->
+      <!-- LOCAL ONLY: replace with real values. CI injects these at runtime. -->
       <password>ANYPOINT_CLIENT_ID~?~ANYPOINT_CLIENT_SECRET</password>
     </server>
 
     <!--
-      MuleSoft public release repository
-      Used by:  dependency resolution for Mule connectors and runtime
+      MuleSoft public releases — resolves Mule connectors and runtime jars.
+      Maps to: pom.xml > repositories > mulesoft-releases
+               pom.xml > pluginRepositories > mulesoft-releases
     -->
     <server>
       <id>mulesoft-releases</id>
@@ -67,33 +68,57 @@
     </server>
 
     <!--
-      MuleSoft Enterprise repository (EE connectors, DataWeave libs, etc.)
-      Uncomment if your project uses enterprise / licensed connectors
+      MuleSoft Enterprise repository.
+      Uncomment if your project uses EE-licensed connectors (Anypoint MQ,
+      DataWeave Enterprise libs, Runtime Fabric dependencies, etc.)
     -->
     <!--
     <server>
       <id>mulesoft-enterprise-repository</id>
-      <username>YOUR_ANYPOINT_USERNAME</username>
-      <password>YOUR_ANYPOINT_PASSWORD</password>
+      <username>~~~Client~~~</username>
+      <password>ANYPOINT_CLIENT_ID~?~ANYPOINT_CLIENT_SECRET</password>
     </server>
     -->
 
   </servers>
 
-  <!-- ───────────────────────────────────────────────────────────────────── -->
-  <!-- Active profiles                                                       -->
-  <!-- ───────────────────────────────────────────────────────────────────── -->
   <!--
-    Activate a deployment profile from the command line:
-      -P deploy-dev     →  deploy to DEV  environment in CloudHub 2.0
-      -P deploy-test    →  deploy to TEST environment in CloudHub 2.0
-      -P deploy-prod    →  deploy to PROD environment in CloudHub 2.0
+    OPTIONAL PROFILE — corporate Maven mirror.
+    Uncomment and update the URL to route all artifact resolution through
+    your internal Nexus / Artifactory instance.
 
-    Example:
-      mvn deploy -DmuleDeploy -P deploy-dev -s settings.xml \
-        -DconnectedAppClientId=<id> \
-        -DconnectedAppClientSecret=<secret> \
-        -DbusinessGroupId=<orgId>
+    <profiles>
+      <profile>
+        <id>corporate-mirror</id>
+        <repositories>
+          <repository>
+            <id>central-mirror</id>
+            <url>https://nexus.mycompany.com/repository/maven-public/</url>
+            <releases><enabled>true</enabled></releases>
+            <snapshots><enabled>false</enabled></snapshots>
+          </repository>
+        </repositories>
+      </profile>
+    </profiles>
+    <activeProfiles>
+      <activeProfile>corporate-mirror</activeProfile>
+    </activeProfiles>
+  -->
+
+  <!--
+    OPTIONAL PROXY — corporate HTTP proxy.
+    Uncomment if Maven must route outbound traffic through a proxy server.
+
+    <proxies>
+      <proxy>
+        <id>corporate-proxy</id>
+        <active>true</active>
+        <protocol>http</protocol>
+        <host>proxy.mycompany.com</host>
+        <port>8080</port>
+        <nonProxyHosts>localhost|127.0.0.1|*.mycompany.com</nonProxyHosts>
+      </proxy>
+    </proxies>
   -->
 
 </settings>
