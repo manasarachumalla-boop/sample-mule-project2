@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xsi:schemaLocation="
+          http://www.mulesoft.org/schema/mule/core
+          http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+          http://www.mulesoft.org/schema/mule/http
+          http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+
+    <!-- Hello World API - Main Flow
+         Exposes : GET /hello
+         Returns : { "message": "Hello World from MuleSoft" }
+         Depends on HTTP_Listener_Config declared in global.xml.
+         Unhandled errors are routed to handle-error-subflow. -->
+
+    <flow name="get-hello-flow" doc:id="get-hello-flow-01">
+
+        <!-- HTTP Listener: accepts GET /hello -->
+        <http:listener
+            doc:name="GET /hello"
+            doc:id="listener-get-hello-01"
+            config-ref="HTTP_Listener_Config"
+            path="/hello"
+            allowedMethods="GET">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers><![CDATA[#[
+                    output application/java
+                    ---
+                    {
+                        "Content-Type"    : "application/json",
+                        "X-Correlation-Id": correlationId
+                    }
+                ]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body>#[payload]</http:body>
+                <http:headers><![CDATA[#[
+                    output application/java
+                    ---
+                    {
+                        "Content-Type"    : "application/json",
+                        "X-Correlation-Id": correlationId
+                    }
+                ]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+
+        <!-- Log the incoming request -->
+        <logger
+            level="INFO"
+            doc:name="Log Request"
+            doc:id="log-request-01"
+            message="#['[hello-world-api] GET /hello received | CorrelationId: ' ++ correlationId ++ ' | Remote address: ' ++ (attributes.remoteAddress default 'unknown')]" />
+
+        <!-- Build the Hello World JSON response -->
+        <set-payload
+            doc:name="Set Hello World Response"
+            doc:id="set-hello-response-01"
+            value='#[output application/json
+---
+{
+    "message": "Hello World from MuleSoft"
+}]' />
+
+        <!-- Log the outgoing response -->
+        <logger
+            level="INFO"
+            doc:name="Log Response"
+            doc:id="log-response-01"
+            message="#['[hello-world-api] GET /hello responding 200 OK | CorrelationId: ' ++ correlationId]" />
+
+        <!-- Route unhandled errors to the centralised error sub-flow -->
+        <error-handler>
+            <on-error-continue
+                type="ANY"
+                doc:name="On Error Continue"
+                doc:id="on-error-continue-01"
+                enableNotifications="true"
+                logException="true">
+                <flow-ref
+                    doc:name="Call Error Sub-flow"
+                    doc:id="ref-error-subflow-01"
+                    name="handle-error-subflow" />
+            </on-error-continue>
+        </error-handler>
+
+    </flow>
+
+    <!-- Centralised error handling sub-flow:
+         Logs the error, sets HTTP 500, and builds a structured error payload. -->
+    <sub-flow name="handle-error-subflow" doc:id="handle-error-subflow-01">
+
+        <logger
+            level="ERROR"
+            doc:name="Log Error Detail"
+            doc:id="log-error-detail-01"
+            message="#['[hello-world-api] Error | Type: ' ++ (error.errorType.identifier default 'UNKNOWN') ++ ' | Description: ' ++ (error.description default 'No description')]" />
+
+        <set-variable
+            variableName="httpStatus"
+            value="#[500]"
+            doc:name="Set HTTP Status 500"
+            doc:id="set-http-status-500-01" />
+
+        <set-payload
+            doc:name="Build Error Response"
+            doc:id="build-error-response-01"
+            value='#[output application/json
+---
+{
+    "status"       : "error",
+    "httpStatus"   : 500,
+    "message"      : "An unexpected error occurred. Please contact support.",
+    "correlationId": correlationId
+}]' />
+
+    </sub-flow>
+
+</mule>

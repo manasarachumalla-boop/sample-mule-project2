@@ -1,22 +1,62 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <mule xmlns="http://www.mulesoft.org/schema/mule/core"
-      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
-      xmlns:http="http://www.mulesoft.org/schema/mule/http"
       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
       xsi:schemaLocation="
-        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
-        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+          http://www.mulesoft.org/schema/mule/core
+          http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+          http://www.mulesoft.org/schema/mule/http
+          http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
 
+    <!-- Global Configuration: shared HTTP Listener config, property placeholders,
+         and global error handler. Loaded by all flows at application startup. -->
+
+    <!-- Property placeholder: loads config-${mule.env}.yaml
+         mule.env defaults to "local"; overridden at deploy time via system property. -->
     <configuration-properties
-        file="config.properties"
-        doc:name="Configuration properties"
-        doc:description="Loads environment-specific properties from config.properties"/>
+        doc:name="Configuration Properties"
+        doc:id="config-properties-01"
+        file="config-${mule.env}.yaml" />
 
+    <!-- HTTP Listener configuration shared by all HTTP endpoints in this application -->
     <http:listener-config
         name="HTTP_Listener_Config"
         doc:name="HTTP Listener Config"
-        doc:description="Configures the HTTP listener for inbound requests on the configured host and port">
-        <http:listener-connection host="${http.host}" port="${http.port}"/>
+        doc:id="http-listener-config-01">
+        <http:listener-connection
+            host="${http.listener.host}"
+            port="${http.listener.port}" />
     </http:listener-config>
+
+    <!-- Global error handler: catches all unhandled errors,
+         logs them, and returns a structured JSON 500 error response. -->
+    <error-handler name="Global_Error_Handler" doc:id="global-error-handler-01">
+        <on-error-propagate
+            type="ANY"
+            doc:name="Any Error"
+            doc:id="on-error-any-01"
+            enableNotifications="true"
+            logException="true">
+
+            <logger
+                level="ERROR"
+                doc:name="Log Error"
+                doc:id="log-error-01"
+                message="#['[Global Error Handler] Unhandled error | Description: ' ++ (error.description default 'Unknown') ++ ' | Type: ' ++ (error.errorType.identifier default 'UNKNOWN')]" />
+
+            <set-variable
+                variableName="httpStatus"
+                value="#[500]"
+                doc:name="Set HTTP Status 500"
+                doc:id="set-status-500-01" />
+
+            <set-payload
+                value='#[output application/json --- { "status": "error", "httpStatus": 500, "message": "An unexpected error occurred. Please contact support.", "correlationId": correlationId }]'
+                doc:name="Set Error Payload"
+                doc:id="set-error-payload-01" />
+
+        </on-error-propagate>
+    </error-handler>
 
 </mule>

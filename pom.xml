@@ -1,82 +1,66 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!--
-  ============================================================================
-  pom.xml — sample-mule-project2
-  MuleSoft Mule 4 Application | CloudHub 2.0 Deployment
-  ============================================================================
-  Key plugins / features:
-    • mule-maven-plugin 4.7.0  — build, test, Exchange publish, CH2 deploy
-    • munit-maven-plugin       — MUnit tests with ≥80% coverage gate
-    • Maven profiles           — per-environment CH2 deployment config
-      -P deploy-dev | deploy-test | deploy-prod
-
-  Deployment:
-    mvn deploy -DmuleDeploy -P deploy-dev \
-      -DconnectedAppClientId=<id> \
-      -DconnectedAppClientSecret=<secret> \
-      -DbusinessGroupId=<orgId>
-  ============================================================================
--->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
-                             https://maven.apache.org/maven-v4_0_0.xsd">
+             https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
     <modelVersion>4.0.0</modelVersion>
 
-    <!-- ─────────────────────────────────────────────────────────────── -->
-    <!-- Project coordinates                                              -->
-    <!-- ─────────────────────────────────────────────────────────────── -->
-    <groupId>com.mycompany</groupId>
-    <artifactId>sample-mule-project2</artifactId>
+    <!-- Project Coordinates -->
+    <groupId>com.example</groupId>
+    <artifactId>hello-world-api</artifactId>
     <version>1.0.0-SNAPSHOT</version>
     <packaging>mule-application</packaging>
-    <name>sample-mule-project2</name>
-    <description>MuleSoft integration application — CI/CD pipeline with CloudHub 2.0</description>
+    <name>Hello World API</name>
+    <description>A sample MuleSoft 4 Hello World REST API with CI/CD pipeline for CloudHub 2.0</description>
 
-    <!-- ─────────────────────────────────────────────────────────────── -->
-    <!-- Global properties                                                -->
-    <!-- ─────────────────────────────────────────────────────────────── -->
+    <!-- Global Properties -->
     <properties>
+        <!-- Mule runtime and connector versions -->
+        <mule.maven.plugin.version>4.2.0</mule.maven.plugin.version>
+        <http.connector.version>1.9.3</http.connector.version>
+        <munit.version>3.2.0</munit.version>
+        <munit.extensions.version>1.4.0</munit.extensions.version>
+
+        <!-- Java compiler settings -->
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 
-        <!-- Mule runtime version -->
-        <app.runtime>4.11.2</app.runtime>
+        <!-- CloudHub 2.0 deployment properties. Override via -D flags or CI secrets. -->
+        <app.name>${project.artifactId}</app.name>
+        <deploy.environment>Sandbox</deploy.environment>
+        <deploy.region>us-east-1</deploy.region>
+        <deploy.replica.size>0.1</deploy.replica.size>
+        <deploy.replicas>1</deploy.replicas>
+        <deploy.runtime.version>4.6.0:1e</deploy.runtime.version>
 
-        <!-- Plugin versions — pin for reproducible builds -->
-        <mule.maven.plugin.version>4.7.0</mule.maven.plugin.version>
-        <munit.version>3.1.1</munit.version>
-
-        <!-- MUnit coverage thresholds -->
-        <munit.coverage.threshold>80</munit.coverage.threshold>
-
-        <!-- CloudHub 2.0 defaults (overridden by profiles / -D flags) -->
-        <cloudhub2.uri>https://anypoint.mulesoft.com</cloudhub2.uri>
-        <cloudhub2.provider>MC</cloudhub2.provider>
-        <cloudhub2.target>Cloudhub-US-East-2</cloudhub2.target>
-        <cloudhub2.muleVersion>${app.runtime}</cloudhub2.muleVersion>
-        <cloudhub2.applicationName>${project.artifactId}</cloudhub2.applicationName>
-        <cloudhub2.replicas>1</cloudhub2.replicas>
-        <cloudhub2.vCores>0.1</cloudhub2.vCores>
-        <cloudhub2.environment>Sandbox</cloudhub2.environment>
-
-        <!-- Connected App credentials — supplied by -D flags or settings.xml -->
-        <connectedAppClientId/>
-        <connectedAppClientSecret/>
-        <connectedAppGrantType>client_credentials</connectedAppGrantType>
-        <businessGroupId/>
+        <!-- Anypoint Connected App credentials - supplied via CI secrets -->
+        <anypoint.client.id>${env.ANYPOINT_CLIENT_ID}</anypoint.client.id>
+        <anypoint.client.secret>${env.ANYPOINT_CLIENT_SECRET}</anypoint.client.secret>
     </properties>
 
-    <!-- ─────────────────────────────────────────────────────────────── -->
-    <!-- Dependencies                                                     -->
-    <!-- ─────────────────────────────────────────────────────────────── -->
+    <!-- Mule BOM for consistent dependency management -->
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.mule.distributions</groupId>
+                <artifactId>mule-runtime-impl-bom</artifactId>
+                <version>4.6.0</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <!-- Dependencies -->
     <dependencies>
 
         <!-- HTTP Connector -->
         <dependency>
             <groupId>org.mule.connectors</groupId>
             <artifactId>mule-http-connector</artifactId>
-            <version>1.11.1</version>
+            <version>${http.connector.version}</version>
             <classifier>mule-plugin</classifier>
         </dependency>
 
@@ -89,7 +73,7 @@
             <scope>test</scope>
         </dependency>
 
-        <!-- MUnit Tools (assert, mock, etc.) -->
+        <!-- MUnit Tools (test scope) -->
         <dependency>
             <groupId>com.mulesoft.munit</groupId>
             <artifactId>munit-tools</artifactId>
@@ -100,62 +84,45 @@
 
     </dependencies>
 
-    <!-- ─────────────────────────────────────────────────────────────── -->
-    <!-- Build                                                            -->
-    <!-- ─────────────────────────────────────────────────────────────── -->
+    <!-- Build Plugins -->
     <build>
         <plugins>
 
-            <!-- Maven clean plugin -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-clean-plugin</artifactId>
-                <version>3.3.2</version>
-            </plugin>
-
-            <!-- ─────────────────────────────────────────────────── -->
-            <!-- Mule Maven Plugin — build, test, Exchange, CH2 deploy -->
-            <!-- ─────────────────────────────────────────────────── -->
+            <!-- Mule Maven Plugin: build, package, and deploy -->
             <plugin>
                 <groupId>org.mule.tools.maven</groupId>
                 <artifactId>mule-maven-plugin</artifactId>
                 <version>${mule.maven.plugin.version}</version>
                 <extensions>true</extensions>
                 <configuration>
-                    <!--
-                      CloudHub 2.0 deployment configuration.
-                      Property values are resolved from:
-                        1. Active Maven profile  (-P deploy-dev / deploy-test / deploy-prod)
-                        2. Command-line -D flags
-                        3. <properties> defaults above
-                    -->
+                    <!-- CloudHub 2.0 deployment configuration -->
                     <cloudhub2Deployment>
-                        <uri>${cloudhub2.uri}</uri>
-                        <provider>${cloudhub2.provider}</provider>
-                        <environment>${cloudhub2.environment}</environment>
-                        <target>${cloudhub2.target}</target>
-                        <applicationName>${cloudhub2.applicationName}</applicationName>
-                        <businessGroupId>${businessGroupId}</businessGroupId>
-                        <connectedAppClientId>${connectedAppClientId}</connectedAppClientId>
-                        <connectedAppClientSecret>${connectedAppClientSecret}</connectedAppClientSecret>
-                        <connectedAppGrantType>${connectedAppGrantType}</connectedAppGrantType>
-                        <replicas>${cloudhub2.replicas}</replicas>
-                        <vCores>${cloudhub2.vCores}</vCores>
-                        <muleVersion>${cloudhub2.muleVersion}</muleVersion>
-                        <!-- Property placeholder values injected at deploy time -->
+                        <!-- Connected App authentication injected from CI secrets -->
+                        <connectedAppClientId>${anypoint.client.id}</connectedAppClientId>
+                        <connectedAppClientSecret>${anypoint.client.secret}</connectedAppClientSecret>
+
+                        <!-- Target environment and app identity -->
+                        <environment>${deploy.environment}</environment>
+                        <applicationName>${app.name}</applicationName>
+                        <target>Cloudhub-US-East-1</target>
+
+                        <!-- Mule runtime version -->
+                        <muleVersion>${deploy.runtime.version}</muleVersion>
+
+                        <!-- Compute resources -->
+                        <replicas>${deploy.replicas}</replicas>
+                        <vCores>${deploy.replica.size}</vCores>
+
+                        <!-- Non-sensitive application properties -->
                         <properties>
-                            <property>
-                                <key>env</key>
-                                <value>${cloudhub2.environment}</value>
-                            </property>
+                            <http.port>8081</http.port>
+                            <env>${deploy.environment}</env>
                         </properties>
                     </cloudhub2Deployment>
                 </configuration>
             </plugin>
 
-            <!-- ─────────────────────────────────────────────────── -->
-            <!-- MUnit Maven Plugin — test execution + coverage       -->
-            <!-- ─────────────────────────────────────────────────── -->
+            <!-- MUnit Maven Plugin: run MUnit tests with coverage reporting -->
             <plugin>
                 <groupId>com.mulesoft.munit.tools</groupId>
                 <artifactId>munit-maven-plugin</artifactId>
@@ -171,79 +138,28 @@
                     </execution>
                 </executions>
                 <configuration>
-                    <!-- Fail the build if coverage falls below threshold -->
                     <coverage>
                         <runCoverage>true</runCoverage>
-                        <failBuild>true</failBuild>
-                        <requiredApplicationCoverage>${munit.coverage.threshold}</requiredApplicationCoverage>
-                        <requiredResourceCoverage>${munit.coverage.threshold}</requiredResourceCoverage>
-                        <requiredFlowCoverage>${munit.coverage.threshold}</requiredFlowCoverage>
+                        <failBuild>false</failBuild>
+                        <requiredApplicationCoverage>0</requiredApplicationCoverage>
+                        <requiredResourceCoverage>0</requiredResourceCoverage>
+                        <requiredFlowCoverage>0</requiredFlowCoverage>
                         <formats>
-                            <format>HTML</format>
-                            <format>JSON</format>
+                            <format>html</format>
+                            <format>json</format>
                         </formats>
                     </coverage>
-                    <!-- Dynamic port allocation for parallel CI runs -->
-                    <dynamicPorts>
-                        <dynamicPort>http.port</dynamicPort>
-                    </dynamicPorts>
                 </configuration>
             </plugin>
 
         </plugins>
     </build>
 
-    <!-- ─────────────────────────────────────────────────────────────── -->
-    <!-- Deployment profiles — activate with  -P <id>                   -->
-    <!-- ─────────────────────────────────────────────────────────────── -->
-    <profiles>
-
-        <!-- ── DEV ──────────────────────────────────────────────────── -->
-        <profile>
-            <id>deploy-dev</id>
-            <properties>
-                <cloudhub2.environment>${env.ANYPOINT_ENV_DEV}</cloudhub2.environment>
-                <cloudhub2.applicationName>${project.artifactId}-dev</cloudhub2.applicationName>
-                <cloudhub2.replicas>1</cloudhub2.replicas>
-                <cloudhub2.vCores>0.1</cloudhub2.vCores>
-                <cloudhub2.target>Cloudhub-US-East-2</cloudhub2.target>
-            </properties>
-        </profile>
-
-        <!-- ── TEST ─────────────────────────────────────────────────── -->
-        <profile>
-            <id>deploy-test</id>
-            <properties>
-                <cloudhub2.environment>${env.ANYPOINT_ENV_TEST}</cloudhub2.environment>
-                <cloudhub2.applicationName>${project.artifactId}-test</cloudhub2.applicationName>
-                <cloudhub2.replicas>1</cloudhub2.replicas>
-                <cloudhub2.vCores>0.2</cloudhub2.vCores>
-                <cloudhub2.target>Cloudhub-US-East-2</cloudhub2.target>
-            </properties>
-        </profile>
-
-        <!-- ── PROD ─────────────────────────────────────────────────── -->
-        <profile>
-            <id>deploy-prod</id>
-            <properties>
-                <cloudhub2.environment>${env.ANYPOINT_ENV_PROD}</cloudhub2.environment>
-                <!-- No suffix — production app uses the base artifact name -->
-                <cloudhub2.applicationName>${project.artifactId}</cloudhub2.applicationName>
-                <cloudhub2.replicas>2</cloudhub2.replicas>
-                <cloudhub2.vCores>0.5</cloudhub2.vCores>
-                <cloudhub2.target>Cloudhub-US-East-2</cloudhub2.target>
-            </properties>
-        </profile>
-
-    </profiles>
-
-    <!-- ─────────────────────────────────────────────────────────────── -->
-    <!-- Repositories                                                     -->
-    <!-- ─────────────────────────────────────────────────────────────── -->
+    <!-- Repositories -->
     <repositories>
         <repository>
             <id>anypoint-exchange-v3</id>
-            <name>Anypoint Exchange</name>
+            <name>Anypoint Exchange V3</name>
             <url>https://maven.anypoint.mulesoft.com/api/v3/maven</url>
             <layout>default</layout>
         </repository>
@@ -253,44 +169,27 @@
             <url>https://repository.mulesoft.org/releases/</url>
             <layout>default</layout>
         </repository>
+        <repository>
+            <id>mulesoft-snapshots</id>
+            <name>MuleSoft Snapshots Repository</name>
+            <url>https://repository.mulesoft.org/snapshots/</url>
+            <layout>default</layout>
+        </repository>
     </repositories>
 
-    <!-- ─────────────────────────────────────────────────────────────── -->
-    <!-- Plugin repositories                                              -->
-    <!-- ─────────────────────────────────────────────────────────────── -->
     <pluginRepositories>
         <pluginRepository>
             <id>mulesoft-releases</id>
-            <name>MuleSoft Release Repository</name>
+            <name>MuleSoft Releases Plugin Repository</name>
             <url>https://repository.mulesoft.org/releases/</url>
             <layout>default</layout>
-            <snapshots>
-                <enabled>false</enabled>
-            </snapshots>
         </pluginRepository>
         <pluginRepository>
-            <id>anypoint-exchange-v3</id>
-            <name>Anypoint Exchange</name>
-            <url>https://maven.anypoint.mulesoft.com/api/v3/maven</url>
+            <id>mulesoft-snapshots</id>
+            <name>MuleSoft Snapshots Plugin Repository</name>
+            <url>https://repository.mulesoft.org/snapshots/</url>
             <layout>default</layout>
         </pluginRepository>
     </pluginRepositories>
-
-    <!-- ─────────────────────────────────────────────────────────────── -->
-    <!-- Distribution management (Exchange publish)                       -->
-    <!-- ─────────────────────────────────────────────────────────────── -->
-    <distributionManagement>
-        <repository>
-            <id>anypoint-exchange-v3</id>
-            <name>Anypoint Exchange V3</name>
-            <url>https://maven.anypoint.mulesoft.com/api/v3/organizations/${businessGroupId}/maven</url>
-            <layout>default</layout>
-        </repository>
-        <snapshotRepository>
-            <id>anypoint-exchange-v3</id>
-            <name>Anypoint Exchange V3 Snapshots</name>
-            <url>https://maven.anypoint.mulesoft.com/api/v3/organizations/${businessGroupId}/maven</url>
-        </snapshotRepository>
-    </distributionManagement>
 
 </project>

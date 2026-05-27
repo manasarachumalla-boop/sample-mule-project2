@@ -1,0 +1,18 @@
+# =============================================================================
+# Local Development Configuration
+# Used when mule.env=local (default for local runs)
+# =============================================================================
+
+http:
+  listener:
+    host: "0.0.0.0"
+    port: "8081"
+
+api:
+  name: "hello-world-api"
+  version: "v1"
+  basePath: "/hello"
+
+logging:
+  level: "DEBUG"
+  appName: "hello-world-api"

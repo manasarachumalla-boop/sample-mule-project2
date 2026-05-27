@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xmlns:munit="http://www.mulesoft.org/schema/mule/munit"
+      xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xsi:schemaLocation="
+          http://www.mulesoft.org/schema/mule/core
+          http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+          http://www.mulesoft.org/schema/mule/munit
+          http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+          http://www.mulesoft.org/schema/mule/munit-tools
+          http://www.mulesoft.org/schema/mule/munit-tools/current/mule-munit-tools.xsd
+          http://www.mulesoft.org/schema/mule/http
+          http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+
+    <!-- MUnit test suite for hello-world-api -->
+    <munit:config name="hello-world-api-test-suite.xml" doc:id="munit-config-01" />
+
+    <!-- Test 1: GET /hello happy path - verify message field -->
+    <munit:test
+        name="get-hello-flow-success-test"
+        doc:id="get-hello-success-test-01"
+        description="GET /hello should return HTTP 200 with Hello World JSON payload">
+
+        <munit:behavior>
+            <munit-tools:mock-when
+                doc:name="Mock HTTP Listener"
+                doc:id="mock-http-attrs-01"
+                processor="http:listener">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="doc:id"
+                        whereValue="listener-get-hello-01" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:attributes
+                        value="#[{ remoteAddress: '127.0.0.1', method: 'GET', requestPath: '/hello', headers: {} }]" />
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+        </munit:behavior>
+
+        <munit:execution>
+            <flow-ref
+                name="get-hello-flow"
+                doc:name="Execute get-hello-flow"
+                doc:id="exec-get-hello-01" />
+        </munit:execution>
+
+        <munit:validation>
+            <munit-tools:assert-that
+                doc:name="Assert message field is not null"
+                doc:id="assert-message-01"
+                expression="#[payload.message]"
+                is="#[MunitTools::notNullValue()]" />
+            <munit-tools:assert-that
+                doc:name="Assert message equals Hello World from MuleSoft"
+                doc:id="assert-message-value-01"
+                expression="#[payload.message]"
+                is="#[MunitTools::equalTo('Hello World from MuleSoft')]" />
+        </munit:validation>
+
+    </munit:test>
+
+    <!-- Test 2: GET /hello - no error httpStatus variable set -->
+    <munit:test
+        name="get-hello-flow-payload-test"
+        doc:id="get-hello-payload-test-01"
+        description="GET /hello must have correct message field and no error httpStatus">
+
+        <munit:behavior>
+            <munit-tools:mock-when
+                doc:name="Mock HTTP Listener"
+                doc:id="mock-http-attrs-02"
+                processor="http:listener">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute
+                        attributeName="doc:id"
+                        whereValue="listener-get-hello-01" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:attributes
+                        value="#[{ remoteAddress: '127.0.0.1', method: 'GET', requestPath: '/hello', headers: {} }]" />
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+        </munit:behavior>
+
+        <munit:execution>
+            <flow-ref
+                name="get-hello-flow"
+                doc:name="Execute get-hello-flow"
+                doc:id="exec-get-hello-02" />
+        </munit:execution>
+
+        <munit:validation>
+            <munit-tools:assert-that
+                doc:name="Assert exact message value"
+                doc:id="assert-exact-message-01"
+                expression="#[payload.message]"
+                is="#[MunitTools::equalTo('Hello World from MuleSoft')]" />
+            <munit-tools:assert-that
+                doc:name="Assert httpStatus defaults to 200"
+                doc:id="assert-no-error-status-01"
+                expression="#[vars.httpStatus default 200]"
+                is="#[MunitTools::equalTo(200)]" />
+        </munit:validation>
+
+    </munit:test>
+
+    <!-- Test 3: handle-error-subflow - sets HTTP 500 and structured error payload -->
+    <munit:test
+        name="handle-error-subflow-test"
+        doc:id="handle-error-subflow-test-01"
+        description="handle-error-subflow must set httpStatus=500 and return a structured error payload">
+
+        <munit:execution>
+            <flow-ref
+                name="handle-error-subflow"
+                doc:name="Execute handle-error-subflow"
+                doc:id="exec-error-subflow-01" />
+        </munit:execution>
+
+        <munit:validation>
+            <munit-tools:assert-that
+                doc:name="Assert httpStatus is 500"
+                doc:id="assert-http-status-500-01"
+                expression="#[vars.httpStatus]"
+                is="#[MunitTools::equalTo(500)]" />
+            <munit-tools:assert-that
+                doc:name="Assert error status field equals error"
+                doc:id="assert-error-status-field-01"
+                expression="#[payload.status]"
+                is="#[MunitTools::equalTo('error')]" />
+            <munit-tools:assert-that
+                doc:name="Assert error httpStatus field equals 500"
+                doc:id="assert-error-http-status-field-01"
+                expression="#[payload.httpStatus]"
+                is="#[MunitTools::equalTo(500)]" />
+            <munit-tools:assert-that
+                doc:name="Assert error message is not null"
+                doc:id="assert-error-message-01"
+                expression="#[payload.message]"
+                is="#[MunitTools::notNullValue()]" />
+        </munit:validation>
+
+    </munit:test>
+
+</mule>

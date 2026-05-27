@@ -1,31 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Configuration>
-
+<Configuration status="WARN">
     <Appenders>
         <Console name="Console" target="SYSTEM_OUT">
-            <PatternLayout pattern="%-5p %d [%t] %c: %m%n"/>
+            <PatternLayout pattern="%d{yyyy-MM-dd HH:mm:ss} %-5p %c{1} [TEST] - %m%n"/>
         </Console>
     </Appenders>
-
     <Loggers>
-        <!-- Http Logger shows wire traffic on DEBUG -->
-        <!--AsyncLogger name="org.mule.service.http.impl.service.HttpMessageLogger" level="DEBUG"/-->
-        <AsyncLogger name="org.mule.service.http" level="WARN"/>
-        <AsyncLogger name="org.mule.extension.http" level="WARN"/>
-
-        <!-- Reduce startup noise -->
-        <AsyncLogger name="com.mulesoft.mule.runtime.plugin" level="WARN"/>
-        <AsyncLogger name="org.mule.maven.client" level="WARN"/>
-        <AsyncLogger name="org.mule.runtime.core.internal.util" level="WARN"/>
-        <AsyncLogger name="org.quartz" level="WARN"/>
-        <AsyncLogger name="org.mule.munit.plugins.coverage.server" level="WARN"/>
-
-        <!-- Mule logger -->
-        <AsyncLogger name="org.mule.runtime.core.internal.processor.LoggerMessageProcessor" level="INFO"/>
-
-        <AsyncRoot level="INFO">
+        <!-- Set MUnit logging to DEBUG during test runs for detailed output -->
+        <AsyncLogger name="com.mulesoft.munit" level="DEBUG" additivity="false">
             <AppenderRef ref="Console"/>
-        </AsyncRoot>
+        </AsyncLogger>
+        <AsyncLogger name="org.mule" level="INFO" additivity="false">
+            <AppenderRef ref="Console"/>
+        </AsyncLogger>
+        <Root level="info">
+            <AppenderRef ref="Console"/>
+        </Root>
     </Loggers>
-
 </Configuration>
