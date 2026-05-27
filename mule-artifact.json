@@ -2,10 +2,8 @@
   "minMuleVersion": "4.6.0",
   "name": "hello-world-api",
   "description": "A sample MuleSoft 4 Hello World REST API with CI/CD pipeline for CloudHub 2.0",
-  "version": "1.0.0-SNAPSHOT",
-  "runtimeVersion": "4.6.0",
   "secureProperties": [
-    "ANYPOINT_CLIENT_ID",
-    "ANYPOINT_CLIENT_SECRET"
+    "anypoint.client.secret",
+    "anypoint.platform.client_secret"
   ]
 }

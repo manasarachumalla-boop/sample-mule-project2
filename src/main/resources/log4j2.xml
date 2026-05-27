@@ -1,17 +1,46 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Configuration status="WARN">
+<!--
+  log4j2.xml - Production/Runtime Logging Configuration
+  Applied during normal Mule application execution.
+  Log pattern includes: timestamp, level, thread, category, correlationId, message.
+-->
+<Configuration status="WARN" monitorInterval="60">
+
     <Appenders>
-        <Console name="Console" target="SYSTEM_OUT">
-            <PatternLayout pattern="%d{yyyy-MM-dd HH:mm:ss} %-5p %c{1} - %m%n"/>
+
+        <!-- Console appender: structured logging to stdout (CloudHub streams this to log aggregator) -->
+        <Console name="STDOUT" target="SYSTEM_OUT">
+            <PatternLayout pattern="[%d{yyyy-MM-dd HH:mm:ss.SSS}] %-5p [%t] [%X{correlationId}] %c{1} - %m%n" />
         </Console>
-        <File name="FileLogger" fileName="logs/app.log" append="true">
-            <PatternLayout pattern="%d{yyyy-MM-dd HH:mm:ss} %-5p %c{1} - %m%n"/>
-        </File>
+
     </Appenders>
+
     <Loggers>
-        <Root level="info">
-            <AppenderRef ref="Console"/>
-            <AppenderRef ref="FileLogger"/>
-        </Root>
+
+        <!-- Application logger: use DEBUG locally, INFO in higher environments -->
+        <AsyncLogger name="com.mycompany" level="INFO" additivity="false">
+            <AppenderRef ref="STDOUT" />
+        </AsyncLogger>
+
+        <!-- Mule framework loggers: keep at WARN to reduce noise -->
+        <AsyncLogger name="org.mule" level="WARN" additivity="false">
+            <AppenderRef ref="STDOUT" />
+        </AsyncLogger>
+
+        <AsyncLogger name="com.mulesoft" level="WARN" additivity="false">
+            <AppenderRef ref="STDOUT" />
+        </AsyncLogger>
+
+        <!-- HTTP connector: only log errors to avoid leaking request/response data -->
+        <AsyncLogger name="org.mule.extension.http" level="WARN" additivity="false">
+            <AppenderRef ref="STDOUT" />
+        </AsyncLogger>
+
+        <!-- Root fallback -->
+        <AsyncRoot level="WARN">
+            <AppenderRef ref="STDOUT" />
+        </AsyncRoot>
+
     </Loggers>
+
 </Configuration>

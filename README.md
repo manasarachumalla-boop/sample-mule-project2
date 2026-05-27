@@ -1,21 +1,36 @@
 # hello-world-api
 
-A sample MuleSoft 4 Hello World REST API with a complete CI/CD pipeline for automated deployment to **CloudHub 2.0 Sandbox** via GitHub Actions.
+A **MuleSoft 4** REST API application exposing a `GET /hello` endpoint, with a complete **GitHub Actions CI/CD pipeline** for automated deployment to **CloudHub 2.0 Sandbox**.
 
 ---
 
 ## Table of Contents
 
-- [Project Structure](#project-structure)
-- [Prerequisites](#prerequisites)
-- [Local Run Steps](#local-run-steps)
-- [Running MUnit Tests](#running-munit-tests)
-- [GitHub Actions Setup](#github-actions-setup)
-- [GitHub Secrets Setup](#github-secrets-setup)
-- [Deployment Flow](#deployment-flow)
-- [Feature Branch Deployment Behaviour](#feature-branch-deployment-behaviour)
-- [API Reference](#api-reference)
-- [Configuration Properties](#configuration-properties)
+1. [Project Overview](#project-overview)
+2. [Project Structure](#project-structure)
+3. [API Endpoint](#api-endpoint)
+4. [Local Run Steps](#local-run-steps)
+5. [Configuration](#configuration)
+6. [MUnit Tests](#munit-tests)
+7. [CloudHub 2.0 Deployment](#cloudhub-20-deployment)
+8. [GitHub Actions Setup](#github-actions-setup)
+9. [GitHub Secrets Setup](#github-secrets-setup)
+10. [Deployment Flow](#deployment-flow)
+11. [Feature Branch Deployment Behavior](#feature-branch-deployment-behavior)
+
+---
+
+## Project Overview
+
+| Property      | Value                               |
+|---------------|-------------------------------------|
+| Artifact ID   | `hello-world-api`                   |
+| Group ID      | `com.mycompany`                     |
+| Version       | `1.0.0`                             |
+| Mule Runtime  | `4.6.0`                             |
+| Java          | `17`                                |
+| Packaging     | `mule-application`                  |
+| Deploy Target | CloudHub 2.0 — Sandbox — us-east-1  |
 
 ---
 
@@ -25,94 +40,47 @@ A sample MuleSoft 4 Hello World REST API with a complete CI/CD pipeline for auto
 hello-world-api/
 ├── .github/
 │   └── workflows/
-│       └── deploy-feature.yml        # GitHub Actions CI/CD pipeline
+│       └── deploy-feature.yml              # CI/CD pipeline (feature branches)
 ├── src/
 │   ├── main/
 │   │   ├── mule/
-│   │   │   ├── global.xml            # Shared config: HTTP listener, error handler, property placeholder
-│   │   │   └── hello-world-api.xml   # Main flow: GET /hello
+│   │   │   ├── global.xml                  # HTTP config, global error handler
+│   │   │   └── hello-world-api.xml         # GET /hello flow
 │   │   └── resources/
-│   │       ├── config-local.yaml     # Local development configuration
-│   │       ├── config-sandbox.yaml   # CloudHub 2.0 Sandbox configuration
-│   │       └── log4j2.xml            # Logging configuration
+│   │       ├── config-local.yaml           # Local dev properties
+│   │       ├── config-sandbox.yaml         # CloudHub Sandbox properties
+│   │       └── log4j2.xml                  # Runtime logging config
 │   └── test/
 │       ├── munit/
-│       │   └── hello-world-api-test-suite.xml  # MUnit tests
+│       │   └── hello-world-api-test-suite.xml   # MUnit 3.x test suite
 │       └── resources/
-│           └── log4j2-test.xml       # Logging config for MUnit runs
-├── mule-artifact.json                # Mule runtime metadata
-├── pom.xml                           # Maven build descriptor with Mule Maven Plugin
+│           └── log4j2-test.xml             # Test logging config
+├── mule-artifact.json                      # Mule runtime descriptor
+├── pom.xml                                 # Maven build + CloudHub 2.0 deploy
+├── settings.xml                            # Maven repository credentials
 └── README.md
 ```
 
 ---
 
-## Prerequisites
+## API Endpoint
 
-| Tool | Version |
-|------|---------|
-| Java (JDK) | 17 |
-| Maven | 3.9+ |
-| Anypoint Studio *(optional)* | 7.x |
-| Mule Runtime | 4.6.0 |
+| Method | Path     | Status  | Response Body                               |
+|--------|----------|---------|---------------------------------------------|
+| `GET`  | `/hello` | `200`   | `{"message": "Hello World from MuleSoft"}`  |
 
-Ensure Maven is configured with access to MuleSoft repositories. See [Maven settings](#github-actions-setup) for details.
-
----
-
-## Local Run Steps
-
-### 1. Clone the repository
-
-```bash
-git clone https://github.com/<your-org>/hello-world-api.git
-cd hello-world-api
-```
-
-### 2. Configure Maven settings
-
-Add the following server entries to `~/.m2/settings.xml` (or use the included `settings.xml`):
-
-```xml
-<servers>
-  <server>
-    <id>anypoint-exchange-v3</id>
-    <username>~~~Client~~~</username>
-    <password>YOUR_CLIENT_ID~?~YOUR_CLIENT_SECRET</password>
-  </server>
-  <server>
-    <id>mulesoft-releases</id>
-    <username>~~~Client~~~</username>
-    <password>YOUR_CLIENT_ID~?~YOUR_CLIENT_SECRET</password>
-  </server>
-</servers>
-```
-
-Replace `YOUR_CLIENT_ID` and `YOUR_CLIENT_SECRET` with credentials from an **Anypoint Connected App** (Platform > Access Management > Connected Apps).
-
-### 3. Build the application
-
-```bash
-mvn clean package -DskipTests -Dmule.env=local
-```
-
-### 4. Run locally with the Mule Maven Plugin
-
-```bash
-mvn mule:run -Dmule.env=local
-```
-
-The API will start on `http://localhost:8081`.
-
-### 5. Test the endpoint
+### Sample request
 
 ```bash
 curl -i http://localhost:8081/hello
 ```
 
-Expected response:
+### Sample response
 
-```json
+```
+HTTP/1.1 200 OK
+Content-Type: application/json
+
 {
   "message": "Hello World from MuleSoft"
 }
@@ -120,187 +88,282 @@ Expected response:
 
 ---
 
-## Running MUnit Tests
+## Local Run Steps
+
+### Prerequisites
+
+| Tool             | Minimum Version | Notes                        |
+|------------------|-----------------|------------------------------|
+| Java JDK         | 17              | Temurin recommended          |
+| Apache Maven     | 3.9+            |                              |
+| Anypoint Studio  | 7.x             | Optional – visual IDE        |
+
+### 1. Clone the repository
 
 ```bash
-mvn clean test -Dmule.env=local
+git clone https://github.com/manasarachumalla-boop/sample-mule-project2.git
+cd sample-mule-project2
 ```
 
-Coverage reports are generated at:
-
-```
-target/site/munit/coverage/
-```
-
-To skip coverage reporting:
+### 2. Build (skip tests)
 
 ```bash
-mvn clean test -Dmule.env=local -Dmunit.coverage.runCoverage=false
+mvn clean package -DskipTests -s settings.xml
 ```
+
+### 3. Run MUnit tests
+
+```bash
+mvn test -s settings.xml
+```
+
+Coverage reports are written to `target/site/munit/coverage/`.
+
+### 4. Run in Anypoint Studio
+
+Open the project in **Anypoint Studio → File → Import → Anypoint Studio Project**.
+Then: **Run As → Mule Application**.
+
+Application will start on `http://localhost:8081`.
+
+### 5. Test the endpoint
+
+```bash
+curl http://localhost:8081/hello
+# {"message":"Hello World from MuleSoft"}
+```
+
+### 6. Change the active environment
+
+```bash
+# Default (local)
+mvn clean package -Dmule.env=local -s settings.xml
+
+# Sandbox profile
+mvn clean package -Dmule.env=sandbox -s settings.xml
+```
+
+---
+
+## Configuration
+
+Environment properties are externalised into YAML files and loaded at runtime based on the `mule.env` system property.
+
+| File                   | Environment | Activated when        |
+|------------------------|-------------|-----------------------|
+| `config-local.yaml`    | Local dev   | `mule.env=local` (default) |
+| `config-sandbox.yaml`  | Sandbox     | `mule.env=sandbox`    |
+
+### Key properties
+
+```yaml
+http:
+  port: "8081"        # HTTP listener port
+  basePath: "/api"    # Base path prefix (informational)
+
+app:
+  name: "hello-world-api"
+  env: "local"        # local | sandbox
+  version: "1.0.0"
+
+log:
+  level: "DEBUG"      # DEBUG locally, INFO in sandbox
+
+api:
+  greeting: "Hello World from MuleSoft"
+```
+
+> **Never commit secrets to YAML files.** Sensitive values (API keys, client secrets) must be passed via Anypoint Secure Properties or environment variables.
+
+---
+
+## MUnit Tests
+
+The test suite at `src/test/munit/hello-world-api-test-suite.xml` contains:
+
+| Test Name                              | Validates                                          |
+|----------------------------------------|----------------------------------------------------|
+| `hello-world-get-flow-success-test`    | Flow returns non-null payload with greeting text   |
+| `hello-world-get-flow-valid-json-test` | Payload is a valid JSON object `{...}`             |
+
+### Run tests
+
+```bash
+mvn test -s settings.xml
+```
+
+### View coverage
+
+Open `target/site/munit/coverage/index.html` in a browser.
+
+---
+
+## CloudHub 2.0 Deployment
+
+The Mule Maven Plugin (`mule-maven-plugin`) is configured in `pom.xml` for CloudHub 2.0 deployment.
+
+### Deployment parameters
+
+| Property                  | Default value            | Override flag                     |
+|---------------------------|--------------------------|-----------------------------------|
+| `app.name`                | `hello-world-api`        | `-Dapp.name=my-app`               |
+| `deploy.environment`      | `Sandbox`                | `-Ddeploy.environment=Production` |
+| `deploy.target`           | `Cloudhub-US-East-1`     | `-Ddeploy.target=...`             |
+| `deploy.replica.size`     | `0.1`                    | `-Ddeploy.replica.size=0.2`       |
+| `deploy.replicas`         | `1`                      | `-Ddeploy.replicas=2`             |
+| `deploy.runtime.version`  | `4.6.0:1e`               | `-Ddeploy.runtime.version=4.6.1`  |
+
+### Manual deploy from CLI
+
+```bash
+mvn deploy -DskipTests -s settings.xml \
+  -Dapp.name=hello-world-api \
+  -Danypoint.client.id=<YOUR_CLIENT_ID> \
+  -Danypoint.client.secret=<YOUR_CLIENT_SECRET>
+```
+
+> Authentication uses **Anypoint Connected App** (client_credentials grant). No username/password required.
 
 ---
 
 ## GitHub Actions Setup
 
-The workflow file is located at `.github/workflows/deploy-feature.yml`.
+The pipeline is defined in `.github/workflows/deploy-feature.yml`.
 
-### Pipeline Jobs
+### What it does (on every push to `feature/**`)
 
-| Job | Trigger | What it does |
-|-----|---------|--------------|
-| `build-and-test` | Every push to `feature/**` | Compiles the app and runs all MUnit tests |
-| `deploy` | After `build-and-test` passes, direct push only | Packages and deploys to CloudHub 2.0 Sandbox |
+```
+push to feature/xxx
+       │
+       ▼
+┌──────────────────────────────────────┐
+│  1. Checkout code (actions/checkout) │
+│  2. Set up Java 17 (Temurin)         │
+│  3. Cache Maven repository           │
+│  4. mvn clean package -DskipTests    │
+│  5. mvn test  (MUnit + coverage)     │
+│  6. Upload coverage artifact         │
+│  7. Sanitize branch → app name       │
+│  8. mvn deploy (CloudHub 2.0 SBX)    │
+│  9. Print deployment summary         │
+└──────────────────────────────────────┘
+```
 
-### Pipeline Steps (deploy job)
+### Enable the workflow
 
-1. Checkout code
-2. Set up Java 17 (Temurin)
-3. Restore Maven dependency cache
-4. Configure Maven `settings.xml` with Anypoint credentials from GitHub Secrets
-5. Derive a CloudHub-safe application name from the branch name
-6. Run `mvn deploy` with the Mule Maven Plugin CloudHub 2.0 goal
-7. Write a deployment summary to the GitHub Actions job summary
+1. Push `.github/workflows/deploy-feature.yml` to your repository.
+2. Add [GitHub Secrets](#github-secrets-setup).
+3. Push to a `feature/` branch — the pipeline starts automatically.
 
 ---
 
 ## GitHub Secrets Setup
 
-Navigate to your repository on GitHub: **Settings → Secrets and variables → Actions → New repository secret**
+The pipeline requires two **GitHub Actions Secrets** for Anypoint Platform authentication.
 
-| Secret name | Description |
-|-------------|-------------|
-| `ANYPOINT_CLIENT_ID` | Client ID of an Anypoint Connected App with CloudHub deployment permissions |
-| `ANYPOINT_CLIENT_SECRET` | Client Secret of the same Connected App |
-
-### Creating an Anypoint Connected App
+### Create a Connected App in Anypoint Platform
 
 1. Log in to [Anypoint Platform](https://anypoint.mulesoft.com)
-2. Go to **Access Management → Connected Apps → Create app**
-3. Select **App acts on its own behalf (client credentials)**
-4. Assign scopes:
-   - `CloudHub Network Administrator` (or `Viewer`) on the target business group
-   - `Exchange Contributor` (to pull assets during build)
-5. Copy the generated **Client ID** and **Client Secret** into GitHub Secrets
+2. Navigate to **Access Management → Connected Apps**
+3. Click **Create App**
+4. Grant the following scopes:
+   - `Runtime Manager - Read Applications`
+   - `Runtime Manager - Create Applications`
+   - `Runtime Manager - Delete Applications`
+   - `Runtime Manager - Deploy Applications`
+   - `Exchange - Read`
+5. Copy the generated **Client ID** and **Client Secret**
+
+### Add secrets to your GitHub repository
+
+1. Go to your repository on GitHub
+2. Navigate to **Settings → Secrets and variables → Actions**
+3. Click **New repository secret** for each:
+
+| Secret Name              | Value                              |
+|--------------------------|------------------------------------|
+| `ANYPOINT_CLIENT_ID`     | Your Connected App Client ID       |
+| `ANYPOINT_CLIENT_SECRET` | Your Connected App Client Secret   |
 
 ---
 
 ## Deployment Flow
 
 ```
-Developer pushes to feature/* branch
-          │
-          ▼
-GitHub Actions triggered (push event)
-          │
-          ▼
-┌─────────────────────────────────┐
-│  Job: build-and-test            │
-│  1. mvn clean test              │
-│  2. Upload coverage report      │
-└──────────────┬──────────────────┘
-               │ (passes)
-               ▼
-┌─────────────────────────────────┐
-│  Job: deploy                    │
-│  1. Sanitise branch → app name  │
-│  2. mvn deploy (skip tests)     │
-│  3. Write deployment summary    │
-└─────────────────────────────────┘
-          │
-          ▼
-Application running in CloudHub 2.0 Sandbox
+Developer pushes to feature/my-feature
+             │
+             ▼
+   GitHub Actions triggered
+             │
+    ┌────────┴─────────┐
+    │                  │
+    ▼                  ▼
+Build + Test      Compute app name
+(mvn package)     feature/my-feature
+(mvn test)        → hello-world-api-feature-my-feature
+    │                  │
+    └────────┬─────────┘
+             │
+             ▼
+    Deploy to CloudHub 2.0
+    Environment: Sandbox
+    Target: Cloudhub-US-East-1
+    App: hello-world-api-feature-my-feature
+             │
+             ▼
+    ✅ App running at:
+    https://hello-world-api-feature-my-feature.us-e2.cloudhub.io/hello
 ```
+
+---
+
+## Feature Branch Deployment Behavior
+
+### Branch name sanitization rules
+
+CloudHub 2.0 application names must:
+- Be **lowercase**
+- Contain only **alphanumeric characters and hyphens**
+- Be **maximum 42 characters** long
+
+The pipeline automatically sanitizes the branch name:
+
+| Branch Name                  | CloudHub App Name                             |
+|------------------------------|-----------------------------------------------|
+| `feature/login`              | `hello-world-api-feature-login`               |
+| `feature/my-feature`         | `hello-world-api-feature-my-feature`          |
+| `feature/my-feature/v2`      | `hello-world-api-feature-my-feature-v2`       |
+| `feature/UPPERCASE`          | `hello-world-api-feature-uppercase`           |
+| `feature/under_score`        | `hello-world-api-feature-under-score`         |
+
+### Deployment behavior by event type
+
+| GitHub Event                    | Build | Test | Deploy |
+|---------------------------------|-------|------|--------|
+| Push to `feature/**`            | ✅    | ✅   | ✅     |
+| Pull Request (any branch)       | ✅    | ✅   | ❌     |
+| Manual trigger (skip_deploy=false) | ✅ | ✅   | ✅     |
+| Manual trigger (skip_deploy=true)  | ✅ | ✅   | ❌     |
 
 ### Rollback / Redeployment
 
-- **Redeploy**: Re-push to the same feature branch. The Mule Maven Plugin will redeploy the existing CloudHub application with the latest artefact.
-- **Rollback**: Check out a previous commit and push to the branch, or re-tag and push. The pipeline will redeploy that revision.
-- **Manual redeployment**: From Anypoint Runtime Manager, select the application and click **Redeploy**.
+Re-deploying the same branch simply re-runs the pipeline.
+The Mule Maven Plugin will **update** an existing CloudHub 2.0 application in-place (rolling update).
 
----
+To force a full redeployment:
 
-## Feature Branch Deployment Behaviour
-
-Each feature branch deploys as a **separate named application** in CloudHub 2.0 Sandbox. This allows multiple feature branches to coexist simultaneously without overwriting each other.
-
-### Naming convention
-
-| Branch name | CloudHub app name |
-|-------------|-------------------|
-| `feature/login` | `hello-world-api-feature-login` |
-| `feature/user-profile` | `hello-world-api-feature-user-profile` |
-| `feature/MY_FEATURE` | `hello-world-api-feature-my-feature` |
-
-### Sanitisation rules applied
-
-1. Convert to lowercase
-2. Replace any character that is not `a-z`, `0-9`, or `-` with `-`
-3. Collapse consecutive hyphens into a single `-`
-4. Strip leading/trailing hyphens
-5. Truncate to **42 characters** (CloudHub limit)
-
-### Pull Request behaviour
-
-Pull request events **do not trigger the deploy job**. The workflow only triggers on direct `push` events to `feature/**` branches.
-
----
-
-## API Reference
-
-### GET /hello
-
-Returns a Hello World JSON message.
-
-**Request**
-
-```
-GET http://<host>:8081/hello
-```
-
-**Response – 200 OK**
-
-```json
-{
-  "message": "Hello World from MuleSoft"
-}
-```
-
-**Response headers**
-
-| Header | Value |
-|--------|-------|
-| `Content-Type` | `application/json` |
-| `X-Correlation-Id` | Mule correlation ID for request tracing |
-
-**Error response – 500 Internal Server Error**
-
-```json
-{
-  "status": "error",
-  "httpStatus": 500,
-  "message": "An unexpected error occurred. Please contact support.",
-  "correlationId": "<correlation-id>"
-}
+```bash
+# Trigger by pushing an empty commit
+git commit --allow-empty -m "chore: trigger redeploy"
+git push origin feature/my-feature
 ```
 
 ---
 
-## Configuration Properties
+## References
 
-Environment-specific properties are externalised in YAML files under `src/main/resources/`. The active file is selected at startup via the `-Dmule.env` system property.
-
-| File | Environment | `mule.env` value |
-|------|-------------|-----------------|
-| `config-local.yaml` | Local development | `local` (default) |
-| `config-sandbox.yaml` | CloudHub 2.0 Sandbox | `sandbox` |
-
-### Key properties
-
-| Property | Description | Default (local) |
-|----------|-------------|-----------------|
-| `http.listener.host` | HTTP listener bind address | `0.0.0.0` |
-| `http.listener.port` | HTTP listener port | `8081` |
-| `api.name` | API name used in logging | `hello-world-api` |
-| `logging.level` | Application log level | `DEBUG` (local), `INFO` (sandbox) |
-
-> **Security note**: Never commit credentials or secrets to source control. Inject all sensitive values as CloudHub 2.0 application properties or Anypoint Secure Properties at deploy time.
+- [MuleSoft Documentation](https://docs.mulesoft.com/general/)
+- [Mule Maven Plugin – CloudHub 2.0](https://docs.mulesoft.com/mule-runtime/latest/deploy-to-cloudhub-2)
+- [MUnit Framework](https://docs.mulesoft.com/munit/latest/)
+- [Anypoint Connected Apps](https://docs.mulesoft.com/access-management/connected-apps-overview)
+- [GitHub Actions – actions/setup-java](https://github.com/actions/setup-java)

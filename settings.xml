@@ -1,124 +1,113 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  settings.xml — MuleSoft Anypoint Platform Maven Authentication
-  ================================================================
-  PURPOSE : Authenticates Maven against Anypoint Exchange and MuleSoft
-            repositories for dependency resolution, Exchange publishing,
-            and CloudHub 2.0 deployment.
+  settings.xml
+  ============================================================
+  Maven settings file for hello-world-api.
 
-  CONNECTED APP FORMAT (Mule Maven Plugin 4.x)
-    username: ~~~Client~~~
-    password: <clientId>~?~<clientSecret>
+  This file configures:
+    1. MuleSoft Enterprise repository credentials
+       (required to download Mule connectors and plugins)
+    2. Anypoint Exchange repository access
 
-  CREATING A CONNECTED APP
-    Anypoint Platform > Access Management > Connected Apps > Create
-    Required scopes:
-      Design Center Developer
-      Exchange Contributor / Viewer
-      Manage APIs Configuration
-      Runtime Manager: Deploy Mule Applications
-      CloudHub Network Administrator (Private Space only)
+  USAGE:
+    mvn clean package -s settings.xml
+    mvn deploy -s settings.xml
 
-  LOCAL USE
-    Replace ANYPOINT_CLIENT_ID and ANYPOINT_CLIENT_SECRET with real values,
-    then run:
-      mvn deploy -DmuleDeploy -s settings.xml -P deploy-dev
-        -DbusinessGroupId=<orgId>
-        -DconnectedAppClientId=<clientId>
-        -DconnectedAppClientSecret=<clientSecret>
-        -Dcloudhub2.environment=Sandbox
-        -Dcloudhub2.target=Cloudhub-US-East-2
+  CREDENTIAL SOURCES:
+    Local development:
+      Set environment variables before running Maven:
+        export ANYPOINT_CLIENT_ID=<your-client-id>
+        export ANYPOINT_CLIENT_SECRET=<your-client-secret>
 
-  CI/CD (GitHub Actions)
-    The pipeline generates ~/.m2/settings.xml at runtime from GitHub Secrets.
-    This file is a TEMPLATE ONLY — never commit real credentials.
+    GitHub Actions CI/CD:
+      Credentials are injected via GitHub Secrets:
+        ANYPOINT_CLIENT_ID      -> env.ANYPOINT_CLIENT_ID
+        ANYPOINT_CLIENT_SECRET  -> env.ANYPOINT_CLIENT_SECRET
 
-  SECURITY
-    Rotate Connected App secrets every 90 days.
-    Use minimum required scopes (principle of least privilege).
+  SECURITY:
+    Do NOT hardcode credentials in this file.
+    Commit this file to version control - it contains no secrets.
+  ============================================================
 -->
 <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
           xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0
-                              http://maven.apache.org/xsd/settings-1.0.0.xsd">
+            https://maven.apache.org/xsd/settings-1.0.0.xsd">
 
-  <servers>
+    <!-- ==================== Server Credentials ==================== -->
+    <servers>
 
-    <!--
-      Anypoint Exchange v3 — artifact publishing and dependency resolution.
-      Maps to: pom.xml > distributionManagement > anypoint-exchange-v3
-               pom.xml > repositories > anypoint-exchange-v3
-    -->
-    <server>
-      <id>anypoint-exchange-v3</id>
-      <username>~~~Client~~~</username>
-      <!-- LOCAL ONLY: replace with real values. CI injects these at runtime. -->
-      <password>ANYPOINT_CLIENT_ID~?~ANYPOINT_CLIENT_SECRET</password>
-    </server>
+        <!--
+          Anypoint Exchange V3
+          Used to download API assets and dependencies from Exchange.
+          Credentials: Anypoint Connected App (client_credentials)
+        -->
+        <server>
+            <id>anypoint-exchange-v3</id>
+            <username>~~~Client~~~</username>
+            <password>${env.ANYPOINT_CLIENT_ID}~?~${env.ANYPOINT_CLIENT_SECRET}</password>
+        </server>
 
-    <!--
-      MuleSoft public releases — resolves Mule connectors and runtime jars.
-      Maps to: pom.xml > repositories > mulesoft-releases
-               pom.xml > pluginRepositories > mulesoft-releases
-    -->
-    <server>
-      <id>mulesoft-releases</id>
-      <username>~~~Client~~~</username>
-      <password>ANYPOINT_CLIENT_ID~?~ANYPOINT_CLIENT_SECRET</password>
-    </server>
+        <!--
+          MuleSoft Enterprise (EE) Repository
+          Required for Mule EE runtime, connectors, and MUnit.
+          Credentials: same Connected App.
+        -->
+        <server>
+            <id>mulesoft-enterprise-repository</id>
+            <username>~~~Client~~~</username>
+            <password>${env.ANYPOINT_CLIENT_ID}~?~${env.ANYPOINT_CLIENT_SECRET}</password>
+        </server>
 
-    <!--
-      MuleSoft Enterprise repository.
-      Uncomment if your project uses EE-licensed connectors (Anypoint MQ,
-      DataWeave Enterprise libs, Runtime Fabric dependencies, etc.)
-    -->
-    <!--
-    <server>
-      <id>mulesoft-enterprise-repository</id>
-      <username>~~~Client~~~</username>
-      <password>ANYPOINT_CLIENT_ID~?~ANYPOINT_CLIENT_SECRET</password>
-    </server>
-    -->
+    </servers>
 
-  </servers>
-
-  <!--
-    OPTIONAL PROFILE — corporate Maven mirror.
-    Uncomment and update the URL to route all artifact resolution through
-    your internal Nexus / Artifactory instance.
-
+    <!-- ==================== Profiles ==================== -->
     <profiles>
-      <profile>
-        <id>corporate-mirror</id>
-        <repositories>
-          <repository>
-            <id>central-mirror</id>
-            <url>https://nexus.mycompany.com/repository/maven-public/</url>
-            <releases><enabled>true</enabled></releases>
-            <snapshots><enabled>false</enabled></snapshots>
-          </repository>
-        </repositories>
-      </profile>
+
+        <profile>
+            <id>mule-extra-repos</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <repositories>
+                <repository>
+                    <id>anypoint-exchange-v3</id>
+                    <name>Anypoint Exchange V3</name>
+                    <url>https://maven.anypoint.mulesoft.com/api/v3/maven</url>
+                    <releases>
+                        <enabled>true</enabled>
+                    </releases>
+                    <snapshots>
+                        <enabled>false</enabled>
+                    </snapshots>
+                </repository>
+                <repository>
+                    <id>mulesoft-releases</id>
+                    <name>MuleSoft Releases</name>
+                    <url>https://repository.mulesoft.org/releases/</url>
+                    <releases>
+                        <enabled>true</enabled>
+                    </releases>
+                    <snapshots>
+                        <enabled>false</enabled>
+                    </snapshots>
+                </repository>
+            </repositories>
+            <pluginRepositories>
+                <pluginRepository>
+                    <id>mulesoft-releases</id>
+                    <name>MuleSoft Releases Plugin Repository</name>
+                    <url>https://repository.mulesoft.org/releases/</url>
+                    <releases>
+                        <enabled>true</enabled>
+                    </releases>
+                    <snapshots>
+                        <enabled>false</enabled>
+                    </snapshots>
+                </pluginRepository>
+            </pluginRepositories>
+        </profile>
+
     </profiles>
-    <activeProfiles>
-      <activeProfile>corporate-mirror</activeProfile>
-    </activeProfiles>
-  -->
-
-  <!--
-    OPTIONAL PROXY — corporate HTTP proxy.
-    Uncomment if Maven must route outbound traffic through a proxy server.
-
-    <proxies>
-      <proxy>
-        <id>corporate-proxy</id>
-        <active>true</active>
-        <protocol>http</protocol>
-        <host>proxy.mycompany.com</host>
-        <port>8080</port>
-        <nonProxyHosts>localhost|127.0.0.1|*.mycompany.com</nonProxyHosts>
-      </proxy>
-    </proxies>
-  -->
 
 </settings>

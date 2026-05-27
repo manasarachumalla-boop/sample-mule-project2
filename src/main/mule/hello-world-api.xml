@@ -1,121 +1,74 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+  hello-world-api.xml
+  ============================================================
+  Main API flows for hello-world-api.
+
+  Endpoint:
+    GET /hello  ->  200 { "message": "Hello World from MuleSoft" }
+
+  Flow steps:
+    1. HTTP Listener   - accepts incoming GET /hello requests
+    2. Logger (INFO)   - logs correlation ID and request path
+    3. Set Payload     - builds the JSON response body
+    4. Error Handler   - references global named error handler
+  ============================================================
+-->
 <mule xmlns="http://www.mulesoft.org/schema/mule/core"
       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
       xmlns:http="http://www.mulesoft.org/schema/mule/http"
       xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
       xsi:schemaLocation="
-          http://www.mulesoft.org/schema/mule/core
-          http://www.mulesoft.org/schema/mule/core/current/mule.xsd
-          http://www.mulesoft.org/schema/mule/http
-          http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+        http://www.mulesoft.org/schema/mule/core
+          https://www.mulesoft.org/schema/mule/core/current
+        http://www.mulesoft.org/schema/mule/http
+          https://www.mulesoft.org/schema/mule/http/current">
 
-    <!-- Hello World API - Main Flow
-         Exposes : GET /hello
-         Returns : { "message": "Hello World from MuleSoft" }
-         Depends on HTTP_Listener_Config declared in global.xml.
-         Unhandled errors are routed to handle-error-subflow. -->
+    <!-- ==============================================================
+         FLOW: hello-world-get-flow
+         Handles: GET /hello
+         Returns: 200 { "message": "Hello World from MuleSoft" }
+         ============================================================== -->
+    <flow name="hello-world-get-flow" doc:id="hello-world-get-flow-001">
 
-    <flow name="get-hello-flow" doc:id="get-hello-flow-01">
-
-        <!-- HTTP Listener: accepts GET /hello -->
+        <!-- 1. HTTP Listener: accept GET requests on /hello -->
         <http:listener
-            doc:name="GET /hello"
-            doc:id="listener-get-hello-01"
-            config-ref="HTTP_Listener_Config"
+            config-ref="HTTP_Listener_config"
             path="/hello"
-            allowedMethods="GET">
-            <http:response statusCode="#[vars.httpStatus default 200]">
-                <http:headers><![CDATA[#[
-                    output application/java
-                    ---
-                    {
-                        "Content-Type"    : "application/json",
-                        "X-Correlation-Id": correlationId
-                    }
-                ]]]></http:headers>
+            allowedMethods="GET"
+            doc:name="GET /hello"
+            doc:id="listener-001">
+            <http:response statusCode="200">
+                <http:headers>
+                    <!-- Ensure the client receives JSON content type -->
+                    <![CDATA[#[{'Content-Type': 'application/json'}]]]>
+                </http:headers>
             </http:response>
-            <http:error-response statusCode="#[vars.httpStatus default 500]">
-                <http:body>#[payload]</http:body>
-                <http:headers><![CDATA[#[
-                    output application/java
-                    ---
-                    {
-                        "Content-Type"    : "application/json",
-                        "X-Correlation-Id": correlationId
-                    }
-                ]]]></http:headers>
-            </http:error-response>
         </http:listener>
 
-        <!-- Log the incoming request -->
+        <!-- 2. Logger: log incoming request with correlation ID -->
         <logger
+            doc:name="Log Incoming Request"
+            doc:id="logger-001"
             level="INFO"
-            doc:name="Log Request"
-            doc:id="log-request-01"
-            message="#['[hello-world-api] GET /hello received | CorrelationId: ' ++ correlationId ++ ' | Remote address: ' ++ (attributes.remoteAddress default 'unknown')]" />
+            message='#["[" ++ correlationId ++ "] GET /hello received from " ++ (attributes.remoteAddress default "unknown")]' />
 
-        <!-- Build the Hello World JSON response -->
+        <!-- 3. Set Payload: return JSON Hello World response -->
         <set-payload
-            doc:name="Set Hello World Response"
-            doc:id="set-hello-response-01"
-            value='#[output application/json
----
-{
-    "message": "Hello World from MuleSoft"
-}]' />
+            doc:name="Build JSON Response"
+            doc:id="set-payload-001"
+            value='#[output application/json --- { "message": "Hello World from MuleSoft" }]' />
 
-        <!-- Log the outgoing response -->
+        <!-- 4. Logger: log successful response -->
         <logger
+            doc:name="Log Response Sent"
+            doc:id="logger-002"
             level="INFO"
-            doc:name="Log Response"
-            doc:id="log-response-01"
-            message="#['[hello-world-api] GET /hello responding 200 OK | CorrelationId: ' ++ correlationId]" />
+            message='#["[" ++ correlationId ++ "] GET /hello responding 200 OK"]' />
 
-        <!-- Route unhandled errors to the centralised error sub-flow -->
-        <error-handler>
-            <on-error-continue
-                type="ANY"
-                doc:name="On Error Continue"
-                doc:id="on-error-continue-01"
-                enableNotifications="true"
-                logException="true">
-                <flow-ref
-                    doc:name="Call Error Sub-flow"
-                    doc:id="ref-error-subflow-01"
-                    name="handle-error-subflow" />
-            </on-error-continue>
-        </error-handler>
+        <!-- 5. Flow-level error handler: delegates to global handler -->
+        <error-handler ref="globalErrorHandler" doc:name="Global Error Handler" doc:id="error-ref-001" />
 
     </flow>
-
-    <!-- Centralised error handling sub-flow:
-         Logs the error, sets HTTP 500, and builds a structured error payload. -->
-    <sub-flow name="handle-error-subflow" doc:id="handle-error-subflow-01">
-
-        <logger
-            level="ERROR"
-            doc:name="Log Error Detail"
-            doc:id="log-error-detail-01"
-            message="#['[hello-world-api] Error | Type: ' ++ (error.errorType.identifier default 'UNKNOWN') ++ ' | Description: ' ++ (error.description default 'No description')]" />
-
-        <set-variable
-            variableName="httpStatus"
-            value="#[500]"
-            doc:name="Set HTTP Status 500"
-            doc:id="set-http-status-500-01" />
-
-        <set-payload
-            doc:name="Build Error Response"
-            doc:id="build-error-response-01"
-            value='#[output application/json
----
-{
-    "status"       : "error",
-    "httpStatus"   : 500,
-    "message"      : "An unexpected error occurred. Please contact support.",
-    "correlationId": correlationId
-}]' />
-
-    </sub-flow>
 
 </mule>

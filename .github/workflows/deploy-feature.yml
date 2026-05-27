@@ -1,196 +1,222 @@
-# =============================================================================
-# GitHub Actions CI/CD Pipeline – hello-world-api
-# Trigger  : push to any feature/* branch (direct push only, not PRs)
-# Jobs     : build → test → deploy to CloudHub 2.0 Sandbox
+# ============================================================
+# deploy-feature.yml
+# GitHub Actions CI/CD Pipeline - hello-world-api
 #
-# Required GitHub Secrets:
-#   ANYPOINT_CLIENT_ID     – Connected App client ID (Anypoint Platform)
-#   ANYPOINT_CLIENT_SECRET – Connected App client secret
-# =============================================================================
+# Triggers  : push to feature/** branches
+# Stages    : checkout -> java setup -> build -> test -> deploy
+#
+# GitHub Secrets required:
+#   ANYPOINT_CLIENT_ID      - Anypoint Connected App client ID
+#   ANYPOINT_CLIENT_SECRET  - Anypoint Connected App client secret
+#
+# Dynamic app naming (sanitized for CloudHub 2.0):
+#   feature/login           -> hello-world-api-feature-login
+#   feature/my-feature/v2   -> hello-world-api-feature-my-feature-v2
+# ============================================================
 
-name: Deploy Feature Branch to CloudHub 2.0 Sandbox
+name: CI/CD - Feature Branch to CloudHub 2.0 Sandbox
 
 on:
   push:
     branches:
-      - "feature/**"   # Matches feature/login, feature/my-feature, etc.
+      - "feature/**"
+  # Manual trigger with option to skip deploy
+  workflow_dispatch:
+    inputs:
+      skip_deploy:
+        description: "Skip deployment (build and test only)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
 
-  # Do NOT trigger on pull_request events – deployment is for direct pushes only.
+# Cancel in-progress runs for the same branch on new push
+concurrency:
+  group: "${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: true
 
 env:
   JAVA_VERSION: "17"
-  MULE_RUNTIME_VERSION: "4.6.0:1e"
+  MAVEN_OPTS: "-Xmx1024m -XX:MaxMetaspaceSize=512m"
   DEPLOY_ENVIRONMENT: "Sandbox"
   DEPLOY_TARGET: "Cloudhub-US-East-1"
   DEPLOY_REPLICA_SIZE: "0.1"
   DEPLOY_REPLICAS: "1"
-  MULE_ENV: "sandbox"
+  DEPLOY_RUNTIME_VERSION: "4.6.0:1e"
 
 jobs:
-
-  # ---------------------------------------------------------------------------
-  # Job 1 – build-and-test
-  # Compiles the Mule application and executes all MUnit tests.
-  # ---------------------------------------------------------------------------
-  build-and-test:
-    name: Build and Run MUnit Tests
+  build-test-deploy:
+    name: Build, Test & Deploy to Sandbox
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
 
-      # 1. Check out the repository at the pushed commit.
+      # ----------------------------------------------------------
+      # 1. Checkout source code
+      # ----------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      # 2. Set up Java 17 (required by Mule 4.6+).
-      - name: Set up JDK ${{ env.JAVA_VERSION }}
+      # ----------------------------------------------------------
+      # 2. Set up Java 17 with Maven cache
+      # ----------------------------------------------------------
+      - name: Set up Java ${{ env.JAVA_VERSION }}
         uses: actions/setup-java@v4
         with:
-          java-version: ${{ env.JAVA_VERSION }}
           distribution: "temurin"
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: "maven"
 
-      # 3. Cache the Maven local repository to speed up subsequent runs.
-      - name: Cache Maven dependencies
+      # ----------------------------------------------------------
+      # 3. Additional Maven dependency cache layer
+      # ----------------------------------------------------------
+      - name: Cache Maven repository
         uses: actions/cache@v4
         with:
           path: ~/.m2/repository
-          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          key: "${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}"
           restore-keys: |
             ${{ runner.os }}-maven-
 
-      # 4. Configure the Maven settings.xml with Anypoint Exchange credentials
-      #    so that Mule connectors and plugins can be downloaded.
-      - name: Configure Maven settings for Anypoint Exchange
-        uses: whelk-io/maven-settings-xml-action@v22
-        with:
-          servers: >
-            [
-              {
-                "id": "anypoint-exchange-v3",
-                "username": "~~~Client~~~",
-                "password": "${{ secrets.ANYPOINT_CLIENT_ID }}~?~${{ secrets.ANYPOINT_CLIENT_SECRET }}"
-              },
-              {
-                "id": "mulesoft-releases",
-                "username": "~~~Client~~~",
-                "password": "${{ secrets.ANYPOINT_CLIENT_ID }}~?~${{ secrets.ANYPOINT_CLIENT_SECRET }}"
-              }
-            ]
-
-      # 5. Compile and run MUnit tests.  The -DmuleEnv flag tells the app which
-      #    config file to load; tests run against the local profile.
-      - name: Build and run MUnit tests
+      # ----------------------------------------------------------
+      # 4. Build the Mule application (skip tests here)
+      # ----------------------------------------------------------
+      - name: Build Mule application
         run: |
-          mvn clean test \
-            -DmuleEnv=local \
-            -Dmule.env=local \
-            -B \
-            --no-transfer-progress
+          mvn clean package \
+            --batch-mode \
+            --no-transfer-progress \
+            -DskipTests \
+            -s settings.xml
+        env:
+          ANYPOINT_CLIENT_ID: ${{ secrets.ANYPOINT_CLIENT_ID }}
+          ANYPOINT_CLIENT_SECRET: ${{ secrets.ANYPOINT_CLIENT_SECRET }}
 
-      # 6. Upload MUnit coverage reports as a build artefact.
+      # ----------------------------------------------------------
+      # 5. Run MUnit tests and generate coverage report
+      # ----------------------------------------------------------
+      - name: Run MUnit tests
+        run: |
+          mvn test \
+            --batch-mode \
+            --no-transfer-progress \
+            -s settings.xml
+        env:
+          ANYPOINT_CLIENT_ID: ${{ secrets.ANYPOINT_CLIENT_ID }}
+          ANYPOINT_CLIENT_SECRET: ${{ secrets.ANYPOINT_CLIENT_SECRET }}
+
+      # ----------------------------------------------------------
+      # 6. Publish MUnit coverage report as a pipeline artifact
+      # ----------------------------------------------------------
       - name: Upload MUnit coverage report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: munit-coverage-report
           path: target/site/munit/coverage/
-          if-no-files-found: ignore
+          retention-days: 14
 
-  # ---------------------------------------------------------------------------
-  # Job 2 – deploy
-  # Packages the Mule application and deploys it to CloudHub 2.0 Sandbox.
-  # Runs only on direct pushes (not pull requests) after build-and-test passes.
-  # ---------------------------------------------------------------------------
-  deploy:
-    name: Deploy to CloudHub 2.0 Sandbox
-    runs-on: ubuntu-latest
-    needs: build-and-test
-
-    # Skip deployment when the workflow was triggered by a pull_request event.
-    if: github.event_name == 'push' && github.actor != 'dependabot[bot]'
-
-    steps:
-
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up JDK ${{ env.JAVA_VERSION }}
-        uses: actions/setup-java@v4
-        with:
-          java-version: ${{ env.JAVA_VERSION }}
-          distribution: "temurin"
-
-      - name: Restore Maven cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: |
-            ${{ runner.os }}-maven-
-
-      - name: Configure Maven settings for Anypoint Exchange
-        uses: whelk-io/maven-settings-xml-action@v22
-        with:
-          servers: >
-            [
-              {
-                "id": "anypoint-exchange-v3",
-                "username": "~~~Client~~~",
-                "password": "${{ secrets.ANYPOINT_CLIENT_ID }}~?~${{ secrets.ANYPOINT_CLIENT_SECRET }}"
-              },
-              {
-                "id": "mulesoft-releases",
-                "username": "~~~Client~~~",
-                "password": "${{ secrets.ANYPOINT_CLIENT_ID }}~?~${{ secrets.ANYPOINT_CLIENT_SECRET }}"
-              }
-            ]
-
-      # Derive a CloudHub-safe application name from the branch name.
-      # Branch  : feature/my-feature-login
-      # App name: hello-world-api-feature-my-feature-login
-      # Rules   : lowercase, replace / and _ and spaces with -, max 42 chars.
-      - name: Derive sanitised application name from branch
+      # ----------------------------------------------------------
+      # 7. Compute a sanitized, CloudHub-safe application name
+      #    from the current branch name.
+      #
+      #    Transformations applied (in order):
+      #      a) lowercase everything
+      #      b) replace '/' and '_' with '-'
+      #      c) strip characters that are not [a-z0-9-]
+      #      d) collapse consecutive '-' into a single '-'
+      #      e) strip leading/trailing '-'
+      #      f) prefix with 'hello-world-api-'
+      #      g) truncate total length to 42 characters
+      #         (CloudHub 2.0 app name limit)
+      # ----------------------------------------------------------
+      - name: Compute CloudHub application name
         id: app-name
         run: |
           RAW_BRANCH="${{ github.ref_name }}"
-          # Lowercase and replace non-alphanumeric chars (except hyphen) with hyphens
-          SANITISED=$(echo "$RAW_BRANCH" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | sed 's/-\+/-/g' | sed 's/^-//;s/-$//')
-          APP_NAME="hello-world-api-${SANITISED}"
-          # CloudHub application names must be <= 42 characters
-          APP_NAME="${APP_NAME:0:42}"
-          # Strip trailing hyphens that may appear after truncation
+
+          # a) Lowercase
+          BRANCH_LOWER=$(echo "$RAW_BRANCH" | tr '[:upper:]' '[:lower:]')
+
+          # b) Replace '/' and '_' with '-'
+          BRANCH_DASHES=$(echo "$BRANCH_LOWER" | tr '/_' '-')
+
+          # c) Strip non-alphanumeric, non-hyphen characters
+          BRANCH_CLEAN=$(echo "$BRANCH_DASHES" | sed 's/[^a-z0-9-]//g')
+
+          # d) Collapse multiple consecutive hyphens
+          BRANCH_NO_MULTI=$(echo "$BRANCH_CLEAN" | sed 's/--*/-/g')
+
+          # e) Strip leading and trailing hyphens
+          BRANCH_TRIMMED=$(echo "$BRANCH_NO_MULTI" | sed 's/^-//;s/-$//')
+
+          # f) Prepend artifact prefix
+          FULL_NAME="hello-world-api-${BRANCH_TRIMMED}"
+
+          # g) Truncate to 42 characters
+          APP_NAME=$(echo "$FULL_NAME" | cut -c1-42)
+
+          # Strip trailing hyphen that might result from truncation
           APP_NAME=$(echo "$APP_NAME" | sed 's/-$//')
+
           echo "app_name=${APP_NAME}" >> "$GITHUB_OUTPUT"
-          echo "Deploying as: ${APP_NAME}"
+          echo "Computed CloudHub app name: ${APP_NAME}"
 
-      # Package (skip tests – already executed in job 1) and deploy via the
-      # Mule Maven Plugin cloudhub2Deploy goal.
-      - name: Package and deploy to CloudHub 2.0 Sandbox
+      # ----------------------------------------------------------
+      # 8. Deploy to CloudHub 2.0 Sandbox
+      #
+      #    Skip conditions:
+      #      - Pull Request event  (github.event_name == 'pull_request')
+      #      - Manual trigger with skip_deploy = "true"
+      #
+      #    The Mule Maven Plugin cloudhub2Deployment configuration
+      #    in pom.xml is used; we override app.name and credentials
+      #    via -D properties at runtime.
+      # ----------------------------------------------------------
+      - name: Deploy to CloudHub 2.0 Sandbox
+        if: |
+          github.event_name != 'pull_request' &&
+          github.event.inputs.skip_deploy != 'true'
         run: |
+          echo "Deploying application: ${{ steps.app-name.outputs.app_name }}"
+          echo "Target environment: ${{ env.DEPLOY_ENVIRONMENT }}"
+          echo "CloudHub target: ${{ env.DEPLOY_TARGET }}"
+
           mvn deploy \
+            --batch-mode \
+            --no-transfer-progress \
             -DskipTests \
-            -Dapp.name=${{ steps.app-name.outputs.app_name }} \
-            -Ddeploy.environment=${{ env.DEPLOY_ENVIRONMENT }} \
-            -Ddeploy.runtime.version=${{ env.MULE_RUNTIME_VERSION }} \
-            -Ddeploy.replica.size=${{ env.DEPLOY_REPLICA_SIZE }} \
-            -Ddeploy.replicas=${{ env.DEPLOY_REPLICAS }} \
-            -Dmule.env=${{ env.MULE_ENV }} \
-            -Danypoint.client.id=${{ secrets.ANYPOINT_CLIENT_ID }} \
-            -Danypoint.client.secret=${{ secrets.ANYPOINT_CLIENT_SECRET }} \
-            -B \
-            --no-transfer-progress
+            -s settings.xml \
+            -Dapp.name="${{ steps.app-name.outputs.app_name }}" \
+            -Ddeploy.environment="${{ env.DEPLOY_ENVIRONMENT }}" \
+            -Ddeploy.target="${{ env.DEPLOY_TARGET }}" \
+            -Ddeploy.replica.size="${{ env.DEPLOY_REPLICA_SIZE }}" \
+            -Ddeploy.replicas="${{ env.DEPLOY_REPLICAS }}" \
+            -Ddeploy.runtime.version="${{ env.DEPLOY_RUNTIME_VERSION }}" \
+            -Danypoint.client.id="${{ secrets.ANYPOINT_CLIENT_ID }}" \
+            -Danypoint.client.secret="${{ secrets.ANYPOINT_CLIENT_SECRET }}"
+        env:
+          ANYPOINT_CLIENT_ID: ${{ secrets.ANYPOINT_CLIENT_ID }}
+          ANYPOINT_CLIENT_SECRET: ${{ secrets.ANYPOINT_CLIENT_SECRET }}
 
-      # Post a deployment summary to the GitHub Actions job summary page.
-      - name: Write deployment summary
-        if: success()
+      # ----------------------------------------------------------
+      # 9. Print deployment summary
+      # ----------------------------------------------------------
+      - name: Deployment summary
+        if: |
+          github.event_name != 'pull_request' &&
+          github.event.inputs.skip_deploy != 'true'
         run: |
-          echo "## Deployment Summary" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Property       | Value |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|----------------|-------|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **App Name**   | \`${{ steps.app-name.outputs.app_name }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Environment**| \`${{ env.DEPLOY_ENVIRONMENT }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Target**     | \`${{ env.DEPLOY_TARGET }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Runtime**    | \`${{ env.MULE_RUNTIME_VERSION }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Branch**     | \`${{ github.ref_name }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Commit**     | \`${{ github.sha }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "=========================================="
+          echo "Deployment Complete"
+          echo "App Name  : ${{ steps.app-name.outputs.app_name }}"
+          echo "Branch    : ${{ github.ref_name }}"
+          echo "Environment: ${{ env.DEPLOY_ENVIRONMENT }}"
+          echo "Target    : ${{ env.DEPLOY_TARGET }}"
+          echo "Commit    : ${{ github.sha }}"
+          echo "=========================================="

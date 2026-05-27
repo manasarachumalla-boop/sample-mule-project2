@@ -1,20 +1,25 @@
-# =============================================================================
-# Sandbox Environment Configuration
-# Used when mule.env=sandbox (set automatically by the CI/CD pipeline)
-# Sensitive values (credentials, secrets) must be stored in
-# Anypoint Runtime Manager secure properties, NOT in this file.
-# =============================================================================
+# ============================================================
+# config-sandbox.yaml
+# Environment configuration for SANDBOX (CloudHub 2.0)
+# Loaded when: -Dmule.env=sandbox
+# ============================================================
 
+# HTTP Listener settings
+# On CloudHub 2.0, port 8081 is the standard internal port
 http:
-  listener:
-    host: "0.0.0.0"
-    port: "8081"
+  port: "8081"
+  basePath: "/api"
 
-api:
+# Application info
+app:
   name: "hello-world-api"
-  version: "v1"
-  basePath: "/hello"
+  env: "sandbox"
+  version: "1.0.0"
 
-logging:
+# Logging level for sandbox (informational)
+log:
   level: "INFO"
-  appName: "hello-world-api"
+
+# API message (customizable per environment)
+api:
+  greeting: "Hello World from MuleSoft"

@@ -1,18 +1,24 @@
-# =============================================================================
-# Local Development Configuration
-# Used when mule.env=local (default for local runs)
-# =============================================================================
+# ============================================================
+# config-local.yaml
+# Environment configuration for LOCAL development
+# Loaded when: -Dmule.env=local (default)
+# ============================================================
 
+# HTTP Listener settings
 http:
-  listener:
-    host: "0.0.0.0"
-    port: "8081"
+  port: "8081"
+  basePath: "/api"
 
-api:
+# Application info
+app:
   name: "hello-world-api"
-  version: "v1"
-  basePath: "/hello"
+  env: "local"
+  version: "1.0.0"
 
-logging:
+# Logging level for local development (verbose)
+log:
   level: "DEBUG"
-  appName: "hello-world-api"
+
+# API message (customizable per environment)
+api:
+  greeting: "Hello World from MuleSoft"
